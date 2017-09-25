@@ -63,7 +63,7 @@ export class ResolverSocket {
         this.socketUDP = new ResolverSocketUDP(onError, this.options);
 
         this.timeoutTimer = setInterval(() => {
-            const timestamp = new Date().getTime();
+            const timestamp = new Date().getTime() - this.options.timeoutInMs;
             this.socketTCP.retryOrTimeoutInboundsOlderThan(timestamp);
             this.socketUDP.retryOrTimeoutInboundsOlderThan(timestamp);
         }, this.options.timeoutInMs / 20);
