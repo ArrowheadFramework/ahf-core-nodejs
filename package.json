@@ -9,12 +9,12 @@
   "types": "target/@types",
   "scripts": {
     "prepublish": "npm run build",
-    "build": "tsc",    
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Emanuel Palm <emanuel.palm@ltu.se>",
   "license": "MIT",
-  "dependencies": {
+  "devDependencies": {
     "@types/node": "6.*",
     "typescript": "^2.5.2"
   },
