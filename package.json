@@ -1,5 +1,5 @@
 {
-  "name": "arrowhead-code",
+  "name": "ahf-core",
   "version": "0.1.0",
   "description": "",
   "engines": {
@@ -17,5 +17,9 @@
   "dependencies": {
     "@types/node": "6.*",
     "typescript": "^2.5.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArrowheadFramework/ahf-core-nodejs.git"
   }
 }
