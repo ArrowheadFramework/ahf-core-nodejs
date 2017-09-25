@@ -176,8 +176,8 @@ export class Message {
     }
 
     public toString(): string {
-        return "OPCODE=" + this.flags.opcode +
-            "(" + OpCode[this.flags.opcode] + ")" +
+        return "ID=" + this.id + ",OPCODE=" + this.flags.opcode +
+            "(" + OpCode[this.flags.opcode] + "),RD=" + this.flags.rd +
             (this.flags.qr
                 ? (",RCODE=" + this.flags.rcode +
                     "(" + RCode[this.flags.rcode] + ")")
