@@ -1,0 +1,21 @@
+{
+  "name": "arrowhead-code",
+  "version": "0.1.0",
+  "description": "",
+  "engines": {
+    "node": ">=6.11"
+  },
+  "main": "target/js/index.js",
+  "types": "target/@types",
+  "scripts": {
+    "prepublish": "npm run build",
+    "build": "tsc",    
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Emanuel Palm <emanuel.palm@ltu.se>",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "6.*",
+    "typescript": "^2.5.2"
+  }
+}
