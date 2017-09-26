@@ -18,22 +18,14 @@ export class Resolver {
      *
      * @param options Name server addresses or options object.
      */
-    public constructor(options?: string[] | ResolverOptions) {
-        if (!options) {
-            options = dns.getServers();
+    public constructor(options: ResolverOptions) {
+        if (options.sockets.length === 0) {
+            options.sockets = dns.getServers().map(address => ({ address }));
         }
-        if (Array.isArray(options)) {
-            options = {
-                sockets: options.map(address => ({ address })),
-            };
-        } else if (options.onUnhandledError) {
-            options.sockets.forEach(socket => {
-                if (!socket.onUnhandledError) {
-                    socket.onUnhandledError = (options as ResolverOptions)
-                        .onUnhandledError;
-                }
-            })
-        }
+        options.sockets.forEach(socket => {
+            socket.onUnhandledError = socket.onUnhandledError ||
+                options.onUnhandledError;
+        })
         this.sockets = options.sockets.map(a => new ResolverSocket(a));
     }
 
