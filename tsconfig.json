@@ -4,12 +4,12 @@
         "declarationDir": "target/@types",
         "module": "commonjs",
         "moduleResolution": "node",
-        "outDir": "target/js",
+        "outDir": "target",
         "sourceMap": true,
         "target": "es6",
         "typeRoots": [
-            "./npm_modules/@types",
-            "./source/@types"
+            "npm_modules/@types",
+            "source/@types"
         ]
     },
     "exclude": [

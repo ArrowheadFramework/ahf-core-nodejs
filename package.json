@@ -10,7 +10,8 @@
   "scripts": {
     "prepublish": "npm run build",
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "pretest": "npm run build",
+    "test": "node target/test/main.js"
   },
   "author": "Emanuel Palm <emanuel.palm@ltu.se>",
   "license": "MIT",
