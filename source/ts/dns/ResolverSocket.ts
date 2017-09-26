@@ -469,7 +469,7 @@ export interface ResolverSocketOptions {
     /**
      * IPv4 or IPv6 address, excluding port, of remote host.
      */
-    readonly address: string;
+    address: string;
 
     /**
      * Time to keep socket open after successfully sending and receiving, in
@@ -477,20 +477,20 @@ export interface ResolverSocketOptions {
      *
      * Defaults to 3000 (3 seconds).
      */
-    readonly keepOpenForMs?: number;
+    keepOpenForMs?: number;
 
     /**
      * Called, if given, whenever an error occurrs that cannot be meaningfully
      * dealt with by the socket.
      */
-    readonly onUnhandledError?: (error: ResolverError) => void;
+    onUnhandledError?: (error: ResolverError) => void;
 
     /**
      * DNS server port number.
      *
      * Defaults to 53.
      */
-    readonly port?: number;
+    port?: number;
 
     /**
      * Socket timeout, in milliseconds.
@@ -501,5 +501,5 @@ export interface ResolverSocketOptions {
      *
      * Defaults to 10000 (10 seconds). 
      */
-    readonly timeoutInMs?: number;
+    timeoutInMs?: number;
 }

@@ -26,7 +26,11 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
      * @param configuration DNS-SD configuration.
      */
     public constructor(configuration: ServiceDiscoveryDNSSDConfiguration = {}) {
-        this.resolver = new dns.Resolver(configuration.nameServers);
+        this.resolver = new dns.Resolver({
+            sockets: (configuration.nameServers || [])
+                .map(address => ({ address })),
+            onUnhandledError: configuration.onUnhandledError,
+        });
         if (configuration.transactionKey) {
             if (typeof configuration.transactionKey.secret === "string") {
                 configuration.transactionKey.secret = Buffer.from(
@@ -217,13 +221,13 @@ export interface ServiceDiscoveryDNSSDConfiguration {
     hostnames?: string[];
 
     /**
-     * Addresses, and/or other settings regulating used DNS/DNS-SD servers.
+     * Addresses to used DNS/DNS-SD servers.
      *
      * It is an error to provide domain names rather than concrete IP addresses.
      *
      * If not given, any DNS servers provided by the system will be used.
      */
-    nameServers?: Array<string | dns.ResolverSocketOptions>;
+    nameServers?: string[];
 
     /**
      * Credentials used to sign DNS UPDATE requests.

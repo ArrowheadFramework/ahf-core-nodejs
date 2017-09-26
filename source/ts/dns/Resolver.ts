@@ -16,13 +16,25 @@ export class Resolver {
     /**
      * Creates new DNS resolver.
      *
-     * @param nameServers Name server addresses or server socket options.
+     * @param options Name server addresses or options object.
      */
-    public constructor(nameServers?: Array<string | ResolverSocketOptions>) {
-        if (!nameServers) {
-            nameServers = dns.getServers();
+    public constructor(options?: string[] | ResolverOptions) {
+        if (!options) {
+            options = dns.getServers();
         }
-        this.sockets = nameServers.map(a => new ResolverSocket(a));
+        if (Array.isArray(options)) {
+            options = {
+                sockets: options.map(address => ({ address })),
+            };
+        } else if (options.onUnhandledError) {
+            options.sockets.forEach(socket => {
+                if (!socket.onUnhandledError) {
+                    socket.onUnhandledError = (options as ResolverOptions)
+                        .onUnhandledError;
+                }
+            })
+        }
+        this.sockets = options.sockets.map(a => new ResolverSocket(a));
     }
 
     /**
@@ -276,4 +288,20 @@ export enum ResolverErrorKind {
      * the `response` field of any associated `ResolverError` for more details.
      */
     ResponseOpCodeUnexpected,
+}
+
+/**
+ * Resolver options.
+ */
+export interface ResolverOptions {
+    /**
+     * Describes the sockets to use for communicating with remote DNS servers.
+     */
+    sockets: ResolverSocketOptions[],
+
+    /**
+     * Called, if given, whenever an error occurrs that cannot be meaningfully
+     * dealt with by the resolver.
+     */
+    onUnhandledError?: (error: ResolverError) => void;
 }
