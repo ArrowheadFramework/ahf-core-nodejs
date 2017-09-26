@@ -6,11 +6,6 @@ import { Reader, Writer } from "./io";
  */
 export interface ResourceData {
     /**
-     * Resource data length, in bytes.
-     */
-    readonly rdlength: number;
-
-    /**
      * Writes resource data object to given writer.
      */
     write(writer: Writer);
@@ -47,8 +42,6 @@ export function read(type: number, rdlength: number, reader: Reader) {
  * An RFC 1035 A resource.
  */
 export class A implements ResourceData {
-    public readonly rdlength: number = 4;
-
     public constructor(public readonly address: string) { }
 
     public static read(reader: Reader): A {
@@ -71,8 +64,6 @@ export class A implements ResourceData {
  * An RFC 3596 AAAA resource.
  */
 export class AAAA implements ResourceData {
-    public readonly rdlength: number = 16;
-
     public constructor(public readonly address: string) { }
 
     public static read(reader: Reader): AAAA {
@@ -99,14 +90,10 @@ export class AAAA implements ResourceData {
  * Holds any kind of resource data. 
  */
 export class ANY implements ResourceData {
-    public readonly rdlength: number;
-
     /**
      * @param rdata Arbitrary resource data.
      */
-    public constructor(public readonly rdata: Buffer) {
-        this.rdlength = rdata.length;
-    }
+    public constructor(public readonly rdata: Buffer) { }
 
     public write(writer: Writer) {
         writer.write(this.rdata);
@@ -117,11 +104,7 @@ export class ANY implements ResourceData {
  * An RFC 1035 CNAME resource.
  */
 export class CNAME implements ResourceData {
-    public readonly rdlength: number;
-
-    public constructor(public readonly cname: string) {
-        this.rdlength = cname.length + 2;
-    }
+    public constructor(public readonly cname: string) { }
 
     public static read(reader: Reader): CNAME {
         return new CNAME(reader.readName());
@@ -136,14 +119,10 @@ export class CNAME implements ResourceData {
  * An RFC 1035 MX resource.
  */
 export class MX implements ResourceData {
-    public readonly rdlength: number;
-
     public constructor(
         public readonly preference: number,
         public readonly exchange: string
-    ) {
-        this.rdlength = exchange.length + 4;
-    }
+    ) { }
 
     public static read(reader: Reader): MX {
         return new MX(reader.readU16(), reader.readName());
@@ -159,11 +138,7 @@ export class MX implements ResourceData {
  * An RFC 1035 NS resource.
  */
 export class NS implements ResourceData {
-    public readonly rdlength: number;
-
-    public constructor(public readonly nsdname: string) {
-        this.rdlength = nsdname.length + 2;
-    }
+    public constructor(public readonly nsdname: string) { }
 
     public static read(reader: Reader): NS {
         return new NS(reader.readName());
@@ -178,11 +153,7 @@ export class NS implements ResourceData {
  * An RFC 1035 PTR resource.
  */
 export class PTR implements ResourceData {
-    public readonly rdlength: number;
-
-    public constructor(public readonly ptrdname: string) {
-        this.rdlength = ptrdname.length + 2;
-    }
+    public constructor(public readonly ptrdname: string) { }
 
     public static read(reader: Reader): PTR {
         return new PTR(reader.readName());
@@ -197,8 +168,6 @@ export class PTR implements ResourceData {
  * An RFC 1035 SOA resource.
  */
 export class SOA implements ResourceData {
-    public readonly rdlength: number;
-
     public constructor(
         public readonly mname: string,
         public readonly rname: string,
@@ -207,9 +176,7 @@ export class SOA implements ResourceData {
         public readonly retry: number,
         public readonly expire: number,
         public readonly minimum: number
-    ) {
-        this.rdlength = mname.length + rname.length + 24;
-    }
+    ) { }
 
     public static read(reader: Reader): SOA {
         return new SOA(
@@ -238,16 +205,12 @@ export class SOA implements ResourceData {
  * An RFC 2728 SRC resource.
  */
 export class SRV implements ResourceData {
-    public readonly rdlength: number;
-
     public constructor(
         public readonly priority: number,
         public readonly weight: number,
         public readonly port: number,
         public readonly target: string
-    ) {
-        this.rdlength = target.length + 8;
-    }
+    ) { }
 
     public static read(reader: Reader): SRV {
         return new SRV(
@@ -270,8 +233,6 @@ export class SRV implements ResourceData {
  * An RFC 2845 TSIG resource.
  */
 export class TSIG implements ResourceData {
-    public readonly rdlength: number;
-
     public constructor(
         public readonly algorithmName: string,
         public readonly timeSigned: number,
@@ -280,10 +241,7 @@ export class TSIG implements ResourceData {
         public readonly originalId: number,
         public readonly error: number,
         public readonly otherData: Buffer
-    ) {
-        this.rdlength = algorithmName.length + mac.length + otherData.length
-            + 18;
-    }
+    ) { }
 
     public static read(reader: Reader): TSIG {
         return new TSIG(
@@ -314,11 +272,7 @@ export class TSIG implements ResourceData {
  * An RFC 1035 TXT resource.
  */
 export class TXT implements ResourceData {
-    public readonly rdlength: number;
-
-    public constructor(public readonly txtData: string) {
-        this.rdlength = this.txtData.length;
-    }
+    public constructor(public readonly txtData: string) { }
 
     /**
      * Converts given attributes into an RFC 1464 compatible TXT resource.

@@ -35,10 +35,11 @@ export class ResolverSocket {
         }
         this.options = {
             address: options.address,
+            buffer: options.buffer || Buffer.alloc(65537),
             keepOpenForMs: options.keepOpenForMs || 3000,
             port: options.port || 53,
             timeoutInMs: options.timeoutInMs || 10000,
-            onUnhandledError: options.onUnhandledError || (error => {
+            onIgnoredError: options.onIgnoredError || (error => {
                 console.debug("Unhandled resolver socket error: %s\n", error);
             }),
         };
@@ -50,6 +51,10 @@ export class ResolverSocket {
             this.socketTCP.rejectAllTasksWith(kind, error);
             this.socketUDP.rejectAllTasksWith(kind, error);
         };
+        const onRequestTooLarge = (task: ResolverSocketTask) => {
+            task.retriesLeft = 0;
+            this.socketTCP.enqueue(task);
+        };
         const onTimeout = () => {
             this.socketTCP.rejectAllTasksWith(
                 ResolverErrorKind.RequestUnanswered
@@ -60,7 +65,11 @@ export class ResolverSocket {
             onTimeout,
             this.options
         );
-        this.socketUDP = new ResolverSocketUDP(onError, this.options);
+        this.socketUDP = new ResolverSocketUDP(
+            onError,
+            onRequestTooLarge,
+            this.options
+        );
 
         this.timeoutTimer = setInterval(() => {
             const timestamp = new Date().getTime() - this.options.timeoutInMs;
@@ -77,16 +86,8 @@ export class ResolverSocket {
      */
     public send(request: Message): Promise<Message> {
         return new Promise((resolve, reject) => {
-            const requestLength = request.length();
-            if (requestLength > 65535) {
-                reject(new ResolverError(
-                    ResolverErrorKind.RequestTooLong,
-                    request
-                ));
-                return;
-            }
             const task = new ResolverSocketTask(request, resolve, reject);
-            if (requestLength < 513 && request.flags.opcode !== OpCode.UPDATE) {
+            if (request.flags.opcode !== OpCode.UPDATE) {
                 task.retriesLeft = 2;
                 this.socketUDP.enqueue(task);
             } else {
@@ -133,6 +134,24 @@ abstract class ResolverSocketTransport<T> {
         this.outbound = [];
     }
 
+    public rejectAllTasksWith(kind: ResolverErrorKind, cause?: Error) {
+        const reject = (task: ResolverSocketTask) => {
+            task.reject(new ResolverError(
+                kind,
+                task.request,
+                undefined,
+                cause
+            ));
+            this.inbound.delete(task.request.id);
+        }
+        for (const task of this.inbound.values()) {
+            reject(task);
+        }
+        for (const task of this.outbound) {
+            reject(task);
+        }
+    }
+
     protected onClosed(reopen: boolean) {
         this.opened = false;
         this.socket = undefined;
@@ -158,30 +177,11 @@ abstract class ResolverSocketTransport<T> {
             this.inbound.delete(response.id);
             task.resolve(response);
         } else {
-            this.options.onUnhandledError(new ResolverError(
+            this.options.onIgnoredError(new ResolverError(
                 ResolverErrorKind.ResponseIDUnexpected,
                 undefined,
                 response
             ));
-        }
-    }
-
-    public rejectAllTasksWith(kind: ResolverErrorKind, cause?: Error) {
-        for (const task of this.inbound.values()) {
-            reject(task);
-        }
-        for (const task of this.outbound) {
-            reject(task);
-        }
-
-        function reject(task: ResolverSocketTask) {
-            task.reject(new ResolverError(
-                kind,
-                task.request,
-                undefined,
-                cause
-            ));
-            this.inbound.delete(task.request.id);
         }
     }
 
@@ -209,7 +209,7 @@ abstract class ResolverSocketTransport<T> {
             return;
         }
         this.outbound.forEach(task => {
-            this.send(this.socket, task.request);
+            this.send(this.socket, task);
             task.timestampSent = new Date().getTime();
             this.inbound.set(task.request.id, task);
         });
@@ -227,7 +227,7 @@ abstract class ResolverSocketTransport<T> {
      */
     protected abstract openSocket(): T;
 
-    protected abstract send(socket: T, request: Message);
+    protected abstract send(socket: T, task: ResolverSocketTask);
 
     private deferCloseIfNoInboundsOrOutbounds() {
         if (this.closer !== undefined) {
@@ -274,6 +274,10 @@ abstract class ResolverSocketTransport<T> {
             }
         }
     }
+
+    protected forget(task: ResolverSocketTask) {
+        this.inbound.delete(task.request.id);
+    }
 }
 
 class ResolverSocketTCP extends ResolverSocketTransport<net.Socket> {
@@ -301,7 +305,7 @@ class ResolverSocketTCP extends ResolverSocketTransport<net.Socket> {
             this.onTimeout();
         });
 
-        let receiveBuffer: Buffer = Buffer.alloc(2);
+        let receiveBuffer: Buffer = this.options.buffer;
         let bytesExpected: number = undefined;
         let bytesReceived: number = 0;
 
@@ -326,7 +330,7 @@ class ResolverSocketTCP extends ResolverSocketTransport<net.Socket> {
                     bytesReceived = bytesExpected;
                     chunk = chunk.slice(bytesExpected);
                 } else {
-                    receiveBuffer = Buffer.alloc(bytesExpected);
+                    receiveBuffer = this.options.buffer;
                     bytesReceived = 0;
                 }
                 socket.removeListener("data", onLengthData);
@@ -364,29 +368,32 @@ class ResolverSocketTCP extends ResolverSocketTransport<net.Socket> {
         return socket;
     }
 
-    protected send(socket: net.Socket, request: Message) {
-        const lengthBase = request.length();
-        const lengthTSIG = (request.transactionSigner
-            ? request.transactionSigner.length() : 0);
-        const length = lengthBase + lengthTSIG;
- 
-        const buffer = Buffer.alloc(2 + length);
+    protected send(socket: net.Socket, task: ResolverSocketTask) {
+        const buffer = this.options.buffer;
+        const writer = new Writer(buffer, 2);
 
-        // Write full message length. See RFC 1035 section 4.2.2.
-        buffer.writeUInt16BE(length, 0);
+        task.request.write(writer);
+        if (task.request.transactionSigner) {
+            task.request.transactionSigner
+                .sign(task.request.id, buffer.slice(2, writer.offset()))
+                .write(writer);
 
-        const requestBuffer = buffer.slice(2);
-        request.write(requestBuffer);
-
-        if (lengthTSIG > 0) {
             // Increment ARCOUNT. See RFC 2845 section 3.4.1.
-            buffer.writeUInt16BE(request.additionals.length + 1, 10);
-
-            request.transactionSigner
-                .sign(request.id, requestBuffer.slice(0, lengthBase))
-                .write(new Writer(requestBuffer.slice(lengthBase)));
+            buffer.writeUInt16BE(task.request.additionals.length + 1, 10 + 2);
         }
-        socket.write(buffer);
+
+        if (writer.overflowed) {
+            task.reject(new ResolverError(
+                ResolverErrorKind.RequestTooLong,
+                task.request
+            ));
+            return;
+        }
+
+        // Write full message length at offset 0. See RFC 1035 section 4.2.2.
+        buffer.writeUInt16BE(writer.offset() - 2, 0);
+
+        socket.write(buffer.slice(0, writer.offset()));
     }
 
     protected closeSocket(socket: net.Socket) {
@@ -397,11 +404,15 @@ class ResolverSocketTCP extends ResolverSocketTransport<net.Socket> {
 }
 
 class ResolverSocketUDP extends ResolverSocketTransport<dgram.Socket> {
+    private readonly onRequestTooLarge: (task: ResolverSocketTask) => void;
+
     public constructor(
         onError: (error: Error) => void,
+        onRequestTooLarge: (task: ResolverSocketTask) => void,
         options: ResolverSocketOptions
     ) {
         super(onError, options);
+        this.onRequestTooLarge = onRequestTooLarge;
     }
 
     protected openSocket(): dgram.Socket {
@@ -429,11 +440,19 @@ class ResolverSocketUDP extends ResolverSocketTransport<dgram.Socket> {
         return socket;
     }
 
-    protected send(socket: dgram.Socket, request: Message) {
-        const length = request.length();
-        const buffer = Buffer.alloc(length);
-        request.write(buffer);
-        socket.send(buffer, this.options.port, this.options.address);
+    protected send(socket: dgram.Socket, task: ResolverSocketTask) {
+        const writer = new Writer(this.options.buffer.slice(0, 512));
+        task.request.write(writer);
+        if (writer.overflowed) {
+            this.forget(task);
+            this.onRequestTooLarge(task);
+            return;
+        }
+        socket.send(
+            this.options.buffer.slice(0, writer.offset()),
+            this.options.port,
+            this.options.address
+        );
     }
 
     public closeSocket(socket: dgram.Socket) {
@@ -448,15 +467,15 @@ class ResolverSocketTask {
      * @param request Request to send and await response to.
      * @param resolve Function used to signal task resolution.
      * @param reject Function used to signal task failure.
+     * @param retriesLeft Amount of additional times request may be resent if
+     * unanswered.
      */
     public constructor(
         public readonly request: Message,
         public readonly resolve: (response: Message) => void,
-        public readonly reject: (error: ResolverError) => void
+        public readonly reject: (error: ResolverError) => void,
+        public retriesLeft: number = 0,
     ) { }
-
-    /** Amount of additional times request may be resent if unanswered. */
-    public retriesLeft: number;
 
     /** The timestamp (tick) at which the request was sent, if at all. */
     public timestampSent?: number;
@@ -469,7 +488,15 @@ export interface ResolverSocketOptions {
     /**
      * IPv4 or IPv6 address, excluding port, of remote host.
      */
-    address: string;
+    readonly address: string;
+
+    /**
+     * Message buffer.
+     *
+     * Used for sending and receiving messages. The buffer must be large enough
+     * to house any messages of interest.
+     */
+    readonly buffer?: Buffer;
 
     /**
      * Time to keep socket open after successfully sending and receiving, in
@@ -477,20 +504,20 @@ export interface ResolverSocketOptions {
      *
      * Defaults to 3000 (3 seconds).
      */
-    keepOpenForMs?: number;
+    readonly keepOpenForMs?: number;
 
     /**
      * Called, if given, whenever an error occurrs that cannot be meaningfully
      * dealt with by the socket.
      */
-    onUnhandledError?: (error: ResolverError) => void;
+    readonly onIgnoredError?: (error: ResolverError) => void;
 
     /**
      * DNS server port number.
      *
      * Defaults to 53.
      */
-    port?: number;
+    readonly port?: number;
 
     /**
      * Socket timeout, in milliseconds.
@@ -501,5 +528,5 @@ export interface ResolverSocketOptions {
      *
      * Defaults to 10000 (10 seconds). 
      */
-    timeoutInMs?: number;
+    readonly timeoutInMs?: number;
 }

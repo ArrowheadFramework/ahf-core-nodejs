@@ -41,20 +41,6 @@ export class ResourceRecord {
     }
 
     /**
-     * Length of record, in bytes, if written using `Writer`.
-     *
-     * @param isQuestion Whether record would be part of `Message` questions.
-     * @return Record length, in bytes.
-     */
-    public length(isQuestion = false): number {
-        return this.name.length + 6 + (isQuestion
-            ? 0
-            : 6 + (this.rdata
-                ? this.rdata.rdlength
-                : 0));
-    }
-
-    /**
      * Writes record to writer.
      *
      * @param writer Writer to receive record data.
@@ -69,8 +55,13 @@ export class ResourceRecord {
         }
         writer.writeU32(this.ttl);
         if (this.rdata) {
-            writer.writeU16(this.rdata.rdlength);
+            const rdlengthWriter = writer.pop(2);
+
+            const offset = writer.offset();
             this.rdata.write(writer);
+
+            const rdlength = writer.offset() - offset;
+            rdlengthWriter.writeU16(rdlength);
         } else {
             writer.writeU16(0);
         }

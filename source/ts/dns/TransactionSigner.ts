@@ -68,7 +68,7 @@ export class TransactionSigner {
      * @param messageBuffer Buffer containing message to sign.
      */
     public sign(messageID: number, messageBuffer: Buffer): ResourceRecord {
-        const timestamp = new Date().getTime() / 1000;
+        const timestamp = Math.floor(new Date().getTime() / 1000);
         const sslName = algorithmNameToSSLName(this.algorithmName);
         const mac = crypto.createHmac(sslName, this.key);
 

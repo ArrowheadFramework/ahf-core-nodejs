@@ -120,20 +120,6 @@ export class Message {
     }
 
     /**
-     * @returns Byte length of message, if written using `write()`.
-     */
-    public length(): number {
-        if (this._length) {
-            return this._length
-        }
-        return this._length = 12 +
-            this.questions.reduce((sum, rr) => sum + rr.length(true), 0) +
-            this.answers.reduce((sum, rr) => sum + rr.length(), 0) +
-            this.authorities.reduce((sum, rr) => sum + rr.length(), 0) +
-            this.additionals.reduce((sum, rr) => sum + rr.length(), 0);
-    }
-
-    /**
      * Writes message to sink.
      *
      * @param sink Destination of message.

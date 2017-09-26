@@ -19,13 +19,25 @@ export class Resolver {
      * @param options Name server addresses or options object.
      */
     public constructor(options: ResolverOptions) {
+        const buffer = Buffer.alloc(65537);
         if (options.sockets.length === 0) {
-            options.sockets = dns.getServers().map(address => ({ address }));
+            options = {
+                sockets: dns.getServers().map(address => ({ address })),
+                onUnhandledError: options.onUnhandledError,
+            };
         }
-        options.sockets.forEach(socket => {
-            socket.onUnhandledError = socket.onUnhandledError ||
-                options.onUnhandledError;
-        })
+        options = {
+            sockets: options.sockets.map(socket => ({
+                address: socket.address,
+                buffer: socket.buffer || buffer,
+                keepOpenForMs: socket.keepOpenForMs,
+                onUnhandledError: socket.onIgnoredError || options
+                    .onUnhandledError,
+                port: socket.port,
+                timeoutInMs: socket.timeoutInMs,
+            })),
+            onUnhandledError: options.onUnhandledError,
+        };
         this.sockets = options.sockets.map(a => new ResolverSocket(a));
     }
 
@@ -289,11 +301,11 @@ export interface ResolverOptions {
     /**
      * Describes the sockets to use for communicating with remote DNS servers.
      */
-    sockets: ResolverSocketOptions[],
+    readonly sockets: ResolverSocketOptions[],
 
     /**
      * Called, if given, whenever an error occurrs that cannot be meaningfully
      * dealt with by the resolver.
      */
-    onUnhandledError?: (error: ResolverError) => void;
+    readonly onUnhandledError?: (error: ResolverError) => void;
 }
