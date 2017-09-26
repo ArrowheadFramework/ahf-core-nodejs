@@ -76,6 +76,11 @@ export interface ServiceRecord extends ServiceIdentifier {
     readonly port: number;
 
     /**
+     * Amount of seconds this record may be cached, if applicable.
+     */
+    readonly timeToLiveInSeconds?: number;
+
+    /**
      * Any service metadata.
      */
     readonly metadata: {
