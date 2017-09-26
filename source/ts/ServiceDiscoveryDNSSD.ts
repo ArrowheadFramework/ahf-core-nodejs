@@ -165,27 +165,27 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
 
     public unpublish(record: ServiceRecord): Promise<void> {
         return this.registrationDomains()
-        .then(domains => domains.map(domain => {
-            const services = "_services._dns-sd._udp." + domain;
-            const type = record.serviceType + "." + domain;
-            const name = record.serviceName + "." + type;
+            .then(domains => domains.map(domain => {
+                const services = "_services._dns-sd._udp." + domain;
+                const type = record.serviceType + "." + domain;
+                const name = record.serviceName + "." + type;
 
-            const updates = [
-                new dns.ResourceRecord(services, dns.Type.PTR, dns.DClass.NONE),
-                new dns.ResourceRecord(type, dns.Type.PTR, dns.DClass.NONE),
-                new dns.ResourceRecord(name, dns.Type.SRV, dns.DClass.NONE),
-                new dns.ResourceRecord(name, dns.Type.TXT, dns.DClass.NONE)
-            ];
+                const updates = [
+                    new dns.ResourceRecord(services, dns.Type.PTR, dns.DClass.NONE),
+                    new dns.ResourceRecord(type, dns.Type.PTR, dns.DClass.NONE),
+                    new dns.ResourceRecord(name, dns.Type.SRV, dns.DClass.NONE),
+                    new dns.ResourceRecord(name, dns.Type.TXT, dns.DClass.NONE)
+                ];
 
-            return dns.Message.newUpdateBuilder()
-                .zone(domain)
-                .absent(name)
-                .update(...updates)
-                .sign(this.transactionSigner)
-                .build();
-        }))
-        .then(updates => this.resolver.sendAll(updates))
-        .then(respones => undefined);
+                return dns.Message.newUpdateBuilder()
+                    .zone(domain)
+                    .absent(name)
+                    .update(...updates)
+                    .sign(this.transactionSigner)
+                    .build();
+            }))
+            .then(updates => this.resolver.sendAll(updates))
+            .then(respones => undefined);
     }
 }
 
