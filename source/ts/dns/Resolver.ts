@@ -157,7 +157,7 @@ export class Resolver {
                         tryNextSocket();
                     } else if (response.flags.opcode !== request.flags.opcode) {
                         error = new ResolverError(
-                            ResolverErrorKind.ResponseNotExpected,
+                            ResolverErrorKind.ResponseOpCodeUnexpected,
                             request,
                             response
                         );
@@ -272,8 +272,8 @@ export enum ResolverErrorKind {
     ResponseIDUnexpected,
 
     /**
-     * A DNS response message was received, but was of an unexpected type. See
+     * A DNS response message was received, but had an unexpected `OpCode`. See
      * the `response` field of any associated `ResolverError` for more details.
      */
-    ResponseNotExpected,
+    ResponseOpCodeUnexpected,
 }
