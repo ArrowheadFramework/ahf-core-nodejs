@@ -13,7 +13,7 @@ import {
  */
 export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
     private readonly resolver: dns.Resolver;
-    private readonly transactionSigner: dns.TransactionSigner;
+    private readonly transactionSigner?: dns.TransactionSigner;
 
     private readonly browsingDomains: () => Promise<string[]>;
     private readonly registrationDomains: () => Promise<string[]>;
@@ -27,7 +27,19 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
      */
     public constructor(configuration: ServiceDiscoveryDNSSDConfiguration = {}) {
         this.resolver = new dns.Resolver(configuration.nameServers);
-        this.transactionSigner = configuration.transactionSigner;
+        if (configuration.transactionKey) {
+            if (typeof configuration.transactionKey.secret === "string") {
+                configuration.transactionKey.secret = Buffer.from(
+                    configuration.transactionKey.secret, "base64"
+                );
+            }
+            this.transactionSigner = new dns.TransactionSigner(
+                configuration.transactionKey.secret,
+                configuration.transactionKey.name,
+                configuration.transactionKey.algorithm,
+                configuration.transactionKey.fudge
+            );
+        }
 
         if (configuration.browsingDomains) {
             const domains = configuration.browsingDomains.slice();
@@ -214,12 +226,38 @@ export interface ServiceDiscoveryDNSSDConfiguration {
     nameServers?: Array<string | dns.ResolverSocketOptions>;
 
     /**
-     * Object used to sign DNS update requests.
-     *
-     * If not given, or if an object with invalid credentials is given, no
-     * service publish or unpublish operations will succeed.
+     * Credentials used to sign DNS UPDATE requests.
      */
-    transactionSigner?: dns.TransactionSigner;
+    transactionKey?: {
+        /**
+         * Name of DNS TSIG key.
+         */
+        name: string,
+
+        /**
+         * Actual DNS TSIG key.
+         *
+         * If a `string` is provided rather than a `Buffer` it is base64 decoded
+         * into a buffer.
+         */
+        secret: string | Buffer,
+
+        /**
+         * Name of hash algorithm used with DNS TSIG key.
+         *
+         * If no algorithm is specified, `HMAC-MD5.SIG-ALG.REG.INT` is used by
+         * default. Other standardised alternatives include `hmac-sha1`,
+         * `hmac-sha224`, `hmac-sha256`, `hmac-sha384` and `hmac-sha512`.
+         */
+        algorithm?: string,
+
+        /**
+         * Time error allowed when verifying signature authenticity.
+         *
+         * A sensible default is used if not specified.
+         */
+        fudge?: number,
+    },
 
     /**
      * Function called whenever an error is not handled.
