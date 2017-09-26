@@ -313,7 +313,7 @@ export class UpdateBuilder {
     public build(): Message {
         return new Message(
             this._id || Message.newID(),
-            { qr: this._flags.qr, opcode: OpCode.UPDATE },
+            { qr: (this._flags || {}).qr === true, opcode: OpCode.UPDATE },
             this._questions, this._answers, this._authorities,
             this._additionals, this._transactionSigner);
     }
