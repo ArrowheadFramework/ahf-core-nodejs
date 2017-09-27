@@ -1,5 +1,6 @@
 import { OpCode, RCode } from "./constants";
 import * as dgram from "dgram";
+import * as events from "events";
 import { Reader, Writer } from "./io";
 import { Message } from "./Message";
 import * as net from "net";
@@ -8,18 +9,17 @@ import { ResolverError, ResolverErrorKind } from "./Resolver";
 /**
  * A DNS resolver socket.
  *
- * Maintains a UDP socket and a TCP socket, each with a queue of outbound DNS
- * requests and a set of inbound DNS responses. Provided requests are
- * transmitted via a transport selected by request byte size. Truncated or lost
- * UDP messages are automatically retried.
+ * Maintains a UDP socket transport and a TCP socket transport, each associated
+ * with a queue of outbound DNS requests and a set of inbound DNS responses.
+ * Provided requests are transmitted via a transport selected by request byte
+ * size or DNS OPCODE. Truncated or lost UDP messages are automatically retried
+ * a limited amount of times.
  */
 export class ResolverSocket {
     public readonly options: ResolverSocketOptions;
 
-    private readonly socketTCP: ResolverSocketTCP;
-    private readonly socketUDP: ResolverSocketUDP;
-
-    private readonly timeoutTimer: NodeJS.Timer;
+    private readonly queueTCP: Sender;
+    private readonly queueUDP: Sender;
 
     /**
      * Creates new DNS resolver socket.
@@ -33,50 +33,47 @@ export class ResolverSocket {
         if (net.isIP(options.address) === 0) {
             throw new Error("Not an IP address: " + options.address);
         }
+
         this.options = {
             address: options.address,
             buffer: options.buffer || Buffer.alloc(65537),
             keepOpenForMs: options.keepOpenForMs || 3000,
+            onErrorIgnored: options.onErrorIgnored || (error => {
+                console.debug("Ignored by Resolver Socket: " + error);
+            }),
             port: options.port || 53,
             timeoutInMs: options.timeoutInMs || 10000,
-            onIgnoredError: options.onIgnoredError || (error => {
-                console.debug("Unhandled resolver socket error: %s\n", error);
-            }),
         };
 
-        const onError = (error: Error) => {
-            const kind = error instanceof ResolverError
-                ? error.kind
-                : ResolverErrorKind.Other;
-            this.socketTCP.rejectAllTasksWith(kind, error);
-            this.socketUDP.rejectAllTasksWith(kind, error);
-        };
-        const onRequestTooLarge = (task: ResolverSocketTask) => {
-            task.retriesLeft = 0;
-            this.socketTCP.enqueue(task);
-        };
-        const onTimeout = () => {
-            this.socketTCP.rejectAllTasksWith(
-                ResolverErrorKind.RequestUnanswered
-            );
-        };
-        this.socketTCP = new ResolverSocketTCP(
-            onError,
-            onTimeout,
-            this.options
-        );
-        this.socketUDP = new ResolverSocketUDP(
-            onError,
-            onRequestTooLarge,
-            this.options
-        );
+        const ignoreUnexpectedResponse = response =>
+            this.options.onErrorIgnored(new ResolverError(
+                ResolverErrorKind.ResponseIDUnexpected,
+                undefined,
+                response
+            ));
+        const rejectAsTooLong = task =>
+            task.reject(new ResolverError(
+                ResolverErrorKind.RequestTooLong,
+                task.request
+            ));
+        const resolveTaskWithResponse = (task, response) =>
+            task.resolve(response);
 
-        this.timeoutTimer = setInterval(() => {
-            const timestamp = new Date().getTime() - this.options.timeoutInMs;
-            this.socketTCP.retryOrTimeoutInboundsOlderThan(timestamp);
-            this.socketUDP.retryOrTimeoutInboundsOlderThan(timestamp);
-        }, this.options.timeoutInMs / 20);
-        this.timeoutTimer.unref();
+        this.queueTCP = new SenderTCP(this.options);
+        this.queueTCP.on("overflow", rejectAsTooLong);
+        this.queueTCP.on("response", resolveTaskWithResponse);
+        this.queueTCP.on("unexpected", ignoreUnexpectedResponse);
+
+        this.queueUDP = new SenderUDP(this.options);
+        this.queueUDP.on("overflow", (task, length) => {
+            if (length <= this.options.buffer.length - 2) {
+                this.queueTCP.enqueue(task);
+            } else {
+                rejectAsTooLong(task);
+            }
+        });
+        this.queueUDP.on("response", resolveTaskWithResponse);
+        this.queueUDP.on("unexpected", ignoreUnexpectedResponse);
     }
 
     /**
@@ -86,12 +83,12 @@ export class ResolverSocket {
      */
     public send(request: Message): Promise<Message> {
         return new Promise((resolve, reject) => {
-            const task = new ResolverSocketTask(request, resolve, reject);
+            const task = new Task(request, resolve, reject);
             if (request.flags.opcode !== OpCode.UPDATE) {
                 task.retriesLeft = 2;
-                this.socketUDP.enqueue(task);
+                this.queueUDP.enqueue(task);
             } else {
-                this.socketTCP.enqueue(task);
+                this.queueTCP.enqueue(task);
             }
         });
     }
@@ -100,92 +97,185 @@ export class ResolverSocket {
      * Closes socket.
      */
     public close() {
-        clearInterval(this.timeoutTimer);
-        this.socketTCP.close();
-        this.socketUDP.close();
+        this.queueTCP.close();
+        this.queueUDP.close();
     }
 }
 
-abstract class ResolverSocketTransport<T> {
-    protected readonly onUnrecoverableError: (error: Error) => void;
-    protected readonly options: ResolverSocketOptions;
+/**
+ * `ResolverSocket` options.
+ */
+export interface ResolverSocketOptions {
+    /**
+     * IPv4 or IPv6 address, excluding port, of remote host.
+     */
+    readonly address: string;
+
+    /**
+     * Message buffer.
+     *
+     * Used for sending and receiving messages. The buffer must be large enough
+     * to house any messages of interest.
+     */
+    readonly buffer?: Buffer;
+
+    /**
+     * Time to keep socket open after successfully sending and receiving, in
+     * milliseconds.
+     *
+     * Defaults to 3000 (3 seconds).
+     */
+    readonly keepOpenForMs?: number;
+
+    /**
+     * Function called whenever an error occurs that cannot be meaningfully
+     * handled by the socket.
+     */
+    readonly onErrorIgnored?: (error: any) => void;
+
+    /**
+     * DNS server port number.
+     *
+     * Defaults to 53.
+     */
+    readonly port?: number;
+
+    /**
+     * Socket timeout, in milliseconds.
+     *
+     * If a period of inactivity while sending or receiving data via the socket
+     * exceeds the given timeout, any outstanding messages are rejected with
+     * a timeout error.
+     *
+     * Defaults to 10000 (10 seconds). 
+     */
+    readonly timeoutInMs?: number;
+}
+
+class Task {
+    public constructor(
+        public readonly request: Message,
+        public readonly resolve: (response: Message) => void,
+        public readonly reject: (error: ResolverError) => void,
+        public retriesLeft: number = 0,
+    ) { }
+
+    public timeSentUnixMs?: number;
+}
+
+interface Sender extends events.EventEmitter {
+    close();
+
+    dequeue(id: number): Task;
+    dequeueAll(): Task[];
+    enqueue(task: Task);
+
+    on(event: "overflow", r: (task: Task, length: number) => void): this;
+    on(event: "response", r: (task: Task, response: Message) => void): this;
+    on(event: "unexpected", r: (response: Message) => void): this;
+}
+
+abstract class SenderBase extends events.EventEmitter implements Sender {
+    private readonly inbound: Map<number, Task>;
 
     private closer: NodeJS.Timer;
-    private opened: boolean;
-    private inbound: Map<number, ResolverSocketTask>;
-    private outbound: Array<ResolverSocketTask>;
-    private socket: T;
+    private outbound: Array<Task>;
 
     protected constructor(
-        onUnrecoverableError: (error: Error) => void,
-        options: ResolverSocketOptions
+        private readonly transport: Transport,
+        private readonly options: ResolverSocketOptions,
     ) {
-        this.onUnrecoverableError = (error) => {
-            this.onClosed(false);
-            this.rejectAllTasksWith(error instanceof ResolverError
-                ? error.kind
-                : ResolverErrorKind.Other, error);
-            onUnrecoverableError(error);
-        };
-        this.options = options;
-
-        this.opened = false;
+        super();
         this.inbound = new Map();
         this.outbound = [];
-    }
 
-    public rejectAllTasksWith(kind: ResolverErrorKind, cause?: Error) {
-        const reject = (task: ResolverSocketTask) => {
-            task.reject(new ResolverError(
-                kind,
-                task.request,
-                undefined,
-                cause
-            ));
-            this.inbound.delete(task.request.id);
-        }
-        for (const task of this.inbound.values()) {
-            reject(task);
-        }
-        for (const task of this.outbound) {
-            reject(task);
-        }
-    }
+        const rejectAll = (reason: any) => this.dequeueAll()
+            .forEach(task =>
+                task.reject(reason instanceof ResolverError
+                    ? new ResolverError(
+                        reason.kind,
+                        reason.request || task.request,
+                        reason.response,
+                        reason.reason
+                    )
+                    : new ResolverError(
+                        ResolverErrorKind.Other,
+                        task.request,
+                        undefined,
+                        reason
+                    )));
 
-    protected onClosed(reopen: boolean) {
-        this.opened = false;
-        this.socket = undefined;
-        if (reopen) {
-            for (const [id, task] of this.inbound.entries()) {
-                this.outbound.push(task);
+        transport.on("close", () => this.poll());
+        transport.on("error", rejectAll);
+        transport.on("open", () => this.poll());
+        transport.on("overflow", (request, length) =>
+            this.emit("overflow", this.dequeue(request.id), length));
+        transport.on("response", response => {
+            const task = this.dequeue(response.id);
+            if (!task) {
+                this.emit("unexpected", response);
+            } else {
+                this.emit("response", task, response);
             }
-            this.inbound.clear();
-            if (this.outbound.length > 0) {
-                this.poll();
+        });
+        transport.on("timeout", () => rejectAll(new ResolverError(
+            ResolverErrorKind.RequestUnanswered
+        )));
+
+        setInterval(() => {
+            if (this.inbound.size === 0) {
+                return;
+            }
+            const threshold = new Date().getTime() - this.options.timeoutInMs;
+            for (const [id, task] of this.inbound) {
+                if (threshold >= task.timeSentUnixMs) {
+                    this.inbound.delete(id);
+                    if (task.retriesLeft-- > 0) {
+                        this.enqueue(task);
+                    } else {
+                        task.reject(new ResolverError(
+                            ResolverErrorKind.RequestUnanswered,
+                            task.request
+                        ));
+                    }
+                }
+            }
+        }, Math.max(options.timeoutInMs / 20, 50)).unref();
+    }
+
+    public close() {
+        this.transport.close();
+    }
+
+    public dequeue(id: number): Task {
+        for (let i = 0; i < this.outbound.length; ++i) {
+            const task = this.outbound[i];
+            if (task.request.id === id) {
+                this.outbound.splice(i, 1);
+                return task;
             }
         }
-    }
 
-    protected onOpened() {
-        this.opened = true;
-        this.poll();
-    }
-
-    protected onMessageReceived(response: Message) {
-        const task = this.inbound.get(response.id);
+        const task = this.inbound.get(id);
         if (task) {
-            this.inbound.delete(response.id);
-            task.resolve(response);
-        } else {
-            this.options.onIgnoredError(new ResolverError(
-                ResolverErrorKind.ResponseIDUnexpected,
-                undefined,
-                response
-            ));
+            this.inbound.delete(id);
+            return task;
         }
+
+        return null;
     }
 
-    public enqueue(task: ResolverSocketTask) {
+    public dequeueAll(): Task[] {
+        const tasks = this.outbound;
+        for (let task of this.inbound.values()) {
+            tasks.push(task);
+        }
+        this.inbound.clear();
+        this.outbound = [];
+        return tasks;
+    }
+
+    public enqueue(task: Task) {
         if (this.inbound.has(task.request.id)) {
             task.reject(new ResolverError(
                 ResolverErrorKind.RequestIDInUse,
@@ -197,112 +287,117 @@ abstract class ResolverSocketTransport<T> {
         }
     }
 
-    protected poll() {
+    private poll() {
         if (this.outbound.length === 0) {
             return;
         }
-        if (!this.socket) {
-            this.socket = this.openSocket();
-            return;
-        }
-        if (!this.opened) {
+        if (!this.transport.opened()) {
+            this.transport.open();
             return;
         }
         this.outbound.forEach(task => {
-            this.send(this.socket, task);
-            task.timestampSent = new Date().getTime();
+            this.transport.send(task.request);
+            task.timeSentUnixMs = new Date().getTime();
             this.inbound.set(task.request.id, task);
         });
         this.outbound = [];
 
-        this.deferCloseIfNoInboundsOrOutbounds();
+        this.deferCloseIfEmpty();
     }
 
-    /**
-     * Opens socket transport and registers relevant socket event handlers.
-     *
-     * This function MUST return a socket object with event handlers registered
-     * that WILL call `this.onOpened()`, `this.onClosed()` and
-     * `this.onMessageReceived()` when appropriate.
-     */
-    protected abstract openSocket(): T;
-
-    protected abstract send(socket: T, task: ResolverSocketTask);
-
-    private deferCloseIfNoInboundsOrOutbounds() {
+    private deferCloseIfEmpty() {
         if (this.closer !== undefined) {
             clearTimeout(this.closer);
         }
         this.closer = setTimeout(() => {
-            if (!this.closeIfNoInboundsOrOutbounds()) {
-                this.deferCloseIfNoInboundsOrOutbounds();
+            if (!this.closeIfEmpty()) {
+                this.deferCloseIfEmpty();
             }
         }, this.options.keepOpenForMs);
     }
 
-    private closeIfNoInboundsOrOutbounds(): boolean {
+    private closeIfEmpty(): boolean {
         if (this.inbound.size === 0 && this.outbound.length === 0) {
-            if (this.socket) {
-                this.close();
+            if (this.transport) {
+                this.transport.close();
             }
             return true;
         }
         return false;
     }
+}
 
-    public close() {
-        this.closeSocket(this.socket);
-    }
-
-    protected abstract closeSocket(socket: T);
-
-    public retryOrTimeoutInboundsOlderThan(timestamp: number) {
-        if (this.inbound.size === 0) {
-            return;
-        }
-        for (const [id, task] of this.inbound) {
-            if (timestamp >= task.timestampSent) {
-                this.inbound.delete(id);
-                if (task.retriesLeft-- > 0) {
-                    this.enqueue(task);
-                } else {
-                    task.reject(new ResolverError(
-                        ResolverErrorKind.RequestUnanswered,
-                        task.request
-                    ));
-                }
-            }
-        }
-    }
-
-    protected forget(task: ResolverSocketTask) {
-        this.inbound.delete(task.request.id);
+class SenderTCP extends SenderBase {
+    public constructor(options: ResolverSocketOptions) {
+        super(new TransportTCP(options), options);
     }
 }
 
-class ResolverSocketTCP extends ResolverSocketTransport<net.Socket> {
-    private readonly onTimeout: () => void;
+class SenderUDP extends SenderBase {
+    public constructor(options: ResolverSocketOptions) {
+        super(new TransportUDP(options), options);
+    }
+}
+
+interface Transport extends events.EventEmitter {
+    open();
+    opened(): boolean;
+    close();
+
+    send(request: Message);
+
+    on(event: "close", r: () => void): this;
+    on(event: "error", r: (error: any) => void): this;
+    on(event: "overflow", r: (request: Message, length: number) => void): this;
+    on(event: "response", r: (response: Message) => void): this;
+    on(event: "open", r: () => void): this;
+    on(event: "timeout", r: () => void): this;
+}
+
+class TransportTCP extends events.EventEmitter implements Transport {
+    private isOpen: boolean;
+    private isTimedOut: boolean;
+    private socket: net.Socket;
 
     public constructor(
-        onError: (error: Error) => void,
-        onTimeout: () => void,
-        options: ResolverSocketOptions
+        private readonly options: ResolverSocketOptions,
     ) {
-        super(onError, options);
-
-        this.onTimeout = onTimeout;
+        super();
+        this.isOpen = false;
+        this.isTimedOut = false;
     }
 
-    protected openSocket(): net.Socket {
-        const socket = new net.Socket();
-        socket.setTimeout(this.options.timeoutInMs);
+    close() {
+        if (this.isOpen) {
+            this.isOpen = false;
+            this.socket.end();
+        }
+    }
 
-        socket.on("close", hadError => this.onClosed(!hadError));
-        socket.on("connect", () => this.onOpened());
-        socket.on("error", error => this.onUnrecoverableError(error));
-        socket.on("timeout", () => {
-            socket.end();
-            this.onTimeout();
+    open() {
+        if (this.isOpen) {
+            return;
+        }
+        this.socket = new net.Socket();
+        this.socket.setTimeout(this.options.timeoutInMs);
+
+        this.socket.on("close", hadError => {
+            this.isOpen = false;
+            if (this.isTimedOut) {
+                this.isTimedOut = false;
+                this.emit("timeout");
+            } else {
+                this.emit("close");
+            }
+        });
+        this.socket.on("connect", () => {
+            this.isOpen = true;
+            this.emit("open");
+        });
+        this.socket.on("error", error => this.emit("error", error));
+        this.socket.on("timeout", () => {
+            this.isTimedOut = true;
+            this.socket.end();
         });
 
         let receiveBuffer: Buffer = this.options.buffer;
@@ -333,8 +428,8 @@ class ResolverSocketTCP extends ResolverSocketTransport<net.Socket> {
                     receiveBuffer = this.options.buffer;
                     bytesReceived = 0;
                 }
-                socket.removeListener("data", onLengthData);
-                socket.addListener("data", onMessageData);
+                this.socket.removeListener("data", onLengthData);
+                this.socket.addListener("data", onMessageData);
                 onMessageData(chunk);
             }
         };
@@ -349,184 +444,129 @@ class ResolverSocketTCP extends ResolverSocketTransport<net.Socket> {
                 bytesReceived = 0;
                 try {
                     const response = Message.read(receiveBuffer);
-                    this.onMessageReceived(response);
+                    this.emit("response", response);
                 } catch (error) {
-                    socket.emit("error", error);
-                    socket.destroy();
+                    this.socket.emit("error", error);
+                    this.socket.destroy();
                     return;
                 }
-                socket.removeListener("data", onMessageData);
-                socket.addListener("data", onLengthData);
+                this.socket.removeListener("data", onMessageData);
+                this.socket.addListener("data", onLengthData);
                 if (chunk.length > 0) {
                     onLengthData(chunk);
                 }
             }
         };
-        socket.addListener("data", onLengthData);
+        this.socket.addListener("data", onLengthData);
 
-        socket.connect(this.options.port, this.options.address);
-        return socket;
+        this.socket.connect(this.options.port, this.options.address);
     }
 
-    protected send(socket: net.Socket, task: ResolverSocketTask) {
+    opened(): boolean {
+        return this.isOpen;
+    }
+
+    send(request: Message) {
         const buffer = this.options.buffer;
         const writer = new Writer(buffer, 2);
 
-        task.request.write(writer);
-        if (task.request.transactionSigner) {
-            task.request.transactionSigner
-                .sign(task.request.id, buffer.slice(2, writer.offset()))
+        request.write(writer);
+        if (request.transactionSigner) {
+            request.transactionSigner
+                .sign(request.id, buffer.slice(2, writer.offset()))
                 .write(writer);
 
             // Increment ARCOUNT. See RFC 2845 section 3.4.1.
-            buffer.writeUInt16BE(task.request.additionals.length + 1, 10 + 2);
+            buffer.writeUInt16BE(request.additionals.length + 1, 10 + 2);
         }
 
         if (writer.overflowed) {
-            task.reject(new ResolverError(
-                ResolverErrorKind.RequestTooLong,
-                task.request
-            ));
+            this.emit("overflow", request, this.options.buffer.length);
             return;
         }
 
         // Write full message length at offset 0. See RFC 1035 section 4.2.2.
         buffer.writeUInt16BE(writer.offset() - 2, 0);
 
-        socket.write(buffer.slice(0, writer.offset()));
-    }
-
-    protected closeSocket(socket: net.Socket) {
-        if (socket) {
-            socket.end();
-        }
+        this.socket.write(buffer.slice(0, writer.offset()));
     }
 }
 
-class ResolverSocketUDP extends ResolverSocketTransport<dgram.Socket> {
-    private readonly onRequestTooLarge: (task: ResolverSocketTask) => void;
+class TransportUDP extends events.EventEmitter implements Transport {
+    private error?: any;
+    private isOpen: boolean;
+    private socket: dgram.Socket;
 
     public constructor(
-        onError: (error: Error) => void,
-        onRequestTooLarge: (task: ResolverSocketTask) => void,
-        options: ResolverSocketOptions
+        private readonly options: ResolverSocketOptions,
     ) {
-        super(onError, options);
-        this.onRequestTooLarge = onRequestTooLarge;
+        super();
+        this.isOpen = false;
     }
 
-    protected openSocket(): dgram.Socket {
-        let socket: dgram.Socket;
-        if (net.isIPv4(this.options.address)) {
-            socket = dgram.createSocket("udp4");
-        } else {
-            socket = dgram.createSocket("udp6");
+    close() {
+        if (this.isOpen) {
+            this.isOpen = false;
+            this.socket.close();
         }
-        socket.on("close", () => this.onClosed(false));
-        socket.on("error", error => {
-            this.onUnrecoverableError(error);
-            socket.close();
-        });
-        socket.on("listening", () => this.onOpened());
-        socket.on("message", (responseBuffer, info) => {
-            try {
-                const response = Message.read(responseBuffer);
-                this.onMessageReceived(response);
-            } catch (error) {
-                this.onUnrecoverableError(error);
-            }
-        });
-        socket.bind();
-        return socket;
     }
 
-    protected send(socket: dgram.Socket, task: ResolverSocketTask) {
-        const writer = new Writer(this.options.buffer.slice(0, 512));
-        task.request.write(writer);
-        if (writer.overflowed) {
-            this.forget(task);
-            this.onRequestTooLarge(task);
+    open() {
+        if (this.isOpen) {
             return;
         }
-        socket.send(
+        if (net.isIPv4(this.options.address)) {
+            this.socket = dgram.createSocket("udp4");
+        } else {
+            this.socket = dgram.createSocket("udp6");
+        }
+        this.socket.on("close", () => {
+            this.isOpen = false;
+            if (this.error) {
+                const error = this.error;
+                this.error = undefined;
+                this.emit("error", error);
+            } else {
+                this.emit("close");
+            }
+        });
+        const onError = error => {
+            this.error = error;
+            this.socket.close();
+        };
+        this.socket.on("error", onError);
+        this.socket.on("listening", () => {
+            this.isOpen = true;
+            this.emit("open");
+        });
+        this.socket.on("message", (responseBuffer, info) => {
+            try {
+                const response = Message.read(responseBuffer);
+                this.emit("response", response);
+            } catch (error) {
+                onError(error);
+            }
+        });
+        this.socket.bind();
+    }
+
+    opened(): boolean {
+        return this.isOpen;
+    }
+
+    send(request: Message) {
+        const writer = new Writer(this.options.buffer);
+        request.write(writer);
+        if (writer.offset() > 512 || writer.overflowed) {
+            this.emit("overflow", request, writer.overflowed
+                ? this.options.buffer.length
+                : writer.offset());
+            return;
+        }
+        this.socket.send(
             this.options.buffer.slice(0, writer.offset()),
             this.options.port,
             this.options.address
         );
     }
-
-    public closeSocket(socket: dgram.Socket) {
-        if (socket) {
-            socket.close();
-        }
-    }
-}
-
-class ResolverSocketTask {
-    /**
-     * @param request Request to send and await response to.
-     * @param resolve Function used to signal task resolution.
-     * @param reject Function used to signal task failure.
-     * @param retriesLeft Amount of additional times request may be resent if
-     * unanswered.
-     */
-    public constructor(
-        public readonly request: Message,
-        public readonly resolve: (response: Message) => void,
-        public readonly reject: (error: ResolverError) => void,
-        public retriesLeft: number = 0,
-    ) { }
-
-    /** The timestamp (tick) at which the request was sent, if at all. */
-    public timestampSent?: number;
-}
-
-/**
- * `ResolverSocket` options.
- */
-export interface ResolverSocketOptions {
-    /**
-     * IPv4 or IPv6 address, excluding port, of remote host.
-     */
-    readonly address: string;
-
-    /**
-     * Message buffer.
-     *
-     * Used for sending and receiving messages. The buffer must be large enough
-     * to house any messages of interest.
-     */
-    readonly buffer?: Buffer;
-
-    /**
-     * Time to keep socket open after successfully sending and receiving, in
-     * milliseconds.
-     *
-     * Defaults to 3000 (3 seconds).
-     */
-    readonly keepOpenForMs?: number;
-
-    /**
-     * Called, if given, whenever an error occurrs that cannot be meaningfully
-     * dealt with by the socket.
-     */
-    readonly onIgnoredError?: (error: ResolverError) => void;
-
-    /**
-     * DNS server port number.
-     *
-     * Defaults to 53.
-     */
-    readonly port?: number;
-
-    /**
-     * Socket timeout, in milliseconds.
-     *
-     * If a period of inactivity while sending or receiving data via the socket
-     * exceeds the given timeout, any outstanding messages are rejected with
-     * a timeout error.
-     *
-     * Defaults to 10000 (10 seconds). 
-     */
-    readonly timeoutInMs?: number;
 }

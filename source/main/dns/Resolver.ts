@@ -23,7 +23,7 @@ export class Resolver {
         if (options.sockets.length === 0) {
             options = {
                 sockets: dns.getServers().map(address => ({ address })),
-                onUnhandledError: options.onUnhandledError,
+                onErrorIgnored: options.onErrorIgnored,
             };
         }
         options = {
@@ -31,12 +31,12 @@ export class Resolver {
                 address: socket.address,
                 buffer: socket.buffer || buffer,
                 keepOpenForMs: socket.keepOpenForMs,
-                onUnhandledError: socket.onIgnoredError || options
-                    .onUnhandledError,
+                onUnhandledError: socket.onErrorIgnored || options
+                    .onErrorIgnored,
                 port: socket.port,
                 timeoutInMs: socket.timeoutInMs,
             })),
-            onUnhandledError: options.onUnhandledError,
+            onErrorIgnored: options.onErrorIgnored,
         };
         this.sockets = options.sockets.map(a => new ResolverSocket(a));
     }
@@ -227,18 +227,18 @@ export class ResolverError extends Error {
      * @param kind Error kind.
      * @param request Request message, if any.
      * @param response Response message, if any.
-     * @param cause Cause of error, if any.
+     * @param reason Cause of error, if any.
      */
     public constructor(
         public readonly kind: ResolverErrorKind,
         public readonly request?: Message,
         public readonly response?: Message,
-        public readonly cause?: Error,
+        public readonly reason?: Error,
     ) {
         super("KIND=" + ResolverErrorKind[kind] +
             (request ? (" REQ={" + request + "}") : "") +
             (response ? (" RES={" + response + "}") : "") +
-            (cause ? (" CAUSE={" + cause + "}") : ""));
+            (reason ? (" CAUSE={" + reason + "}") : ""));
         this.name = (this as any).constructor.name;
     }
 }
@@ -307,5 +307,5 @@ export interface ResolverOptions {
      * Called, if given, whenever an error occurrs that cannot be meaningfully
      * dealt with by the resolver.
      */
-    readonly onUnhandledError?: (error: ResolverError) => void;
+    readonly onErrorIgnored?: (error: ResolverError) => void;
 }
