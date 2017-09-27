@@ -53,8 +53,8 @@ export class A implements ResourceData {
     }
 
     public write(writer: Writer) {
-        this.address.split(".").forEach(part => {
-            const u8 = Number.parseInt(part, 10) & 0xff;
+        this.address.split(".").forEach(section => {
+            const u8 = Number.parseInt(section, 10) & 0xff;
             writer.writeU8(u8);
         });
     }
