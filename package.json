@@ -5,7 +5,7 @@
   "engines": {
     "node": ">=6.11"
   },
-  "main": "target/js/index.js",
+  "main": "target/main/index.js",
   "types": "target/@types",
   "scripts": {
     "prepublish": "npm run build",
