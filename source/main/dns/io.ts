@@ -149,7 +149,30 @@ export class Writer {
     }
 
     public writeName(name: string = "") {
-        this.writeStrings(name.split("."), 0x3f);
+        const labels = [];
+        let label = "";
+        for (let i = 0; i < name.length; ++i) {
+            const c = name.charAt(i);
+            switch (c) {
+                case ".":
+                    labels.push(label);
+                    label = "";
+                    break;
+
+                case "\\":
+                    if (++i < name.length) {
+                        label += name.charAt(i);
+                    }
+                    break;
+
+                default:
+                    label += c;
+            }
+        }
+        if (label.length > 0) {
+            labels.push(label);
+        }
+        this.writeStrings(labels, 0x3f);
     }
 
     public writeString(string: string = "") {
