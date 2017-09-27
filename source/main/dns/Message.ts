@@ -9,7 +9,11 @@ import { TransactionSigner } from "./TransactionSigner";
 export class Message {
     private static nextId: number = (Math.random() * 65535) | 0;
 
-    private _length?: number;
+    /**
+     * Amount of bytes required to house the serialized form of this message as
+     * produced by the `write()` method of this instance.
+     */
+    public readonly byteLength: number;
 
     /**
      * Creates new message.
@@ -34,7 +38,14 @@ export class Message {
         public readonly authorities: ResourceRecord[] = [],
         public readonly additionals: ResourceRecord[] = [],
         public readonly transactionSigner?: TransactionSigner,
-    ) { }
+    ) {
+        this.byteLength = 12 +
+            questions.reduce((sum, rr) => sum + rr.byteLength, 0) +
+            answers.reduce((sum, rr) => sum + rr.byteLength, 0) +
+            authorities.reduce((sum, rr) => sum + rr.byteLength, 0) +
+            additionals.reduce((sum, rr) => sum + rr.byteLength, 0) +
+            (transactionSigner ? transactionSigner.byteLength : 0);
+    }
 
     /**
      * Creates new DNS QUERY message.
@@ -123,8 +134,12 @@ export class Message {
      * Writes message to sink.
      *
      * @param sink Destination of message.
+     * @return Buffer written to.
      */
-    public write(sink: Writer | Buffer) {
+    public write(sink?: Writer | Buffer): Buffer {
+        if (!sink) {
+            sink = Buffer.alloc(this.byteLength);
+        }
         const writer: Writer = sink instanceof Buffer
             ? new Writer(sink)
             : sink;
@@ -150,6 +165,17 @@ export class Message {
         this.answers.forEach(record => record.write(writer));
         this.authorities.forEach(record => record.write(writer));
         this.additionals.forEach(record => record.write(writer));
+
+        if (this.transactionSigner) {
+            this.transactionSigner
+                .sign(this.id, writer.sink.slice(0, writer.offset()))
+                .write(writer);
+
+            // Increment ARCOUNT. See RFC 2845 section 3.4.1.
+            writer.sink.writeUInt16BE(this.additionals.length + 1, 10);
+        }
+
+        return writer.sink;
     }
 
     /**

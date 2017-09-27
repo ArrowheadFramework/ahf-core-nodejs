@@ -6,6 +6,9 @@ import { Message } from "./Message";
 import * as net from "net";
 import { ResolverError, ResolverErrorKind } from "./Resolver";
 
+const BYTE_LENGTH_MAX_UDP = 512;
+const BYTE_LENGTH_MAX_TCP = 65535;
+
 /**
  * A DNS resolver socket.
  *
@@ -18,8 +21,8 @@ import { ResolverError, ResolverErrorKind } from "./Resolver";
 export class ResolverSocket {
     public readonly options: ResolverSocketOptions;
 
-    private readonly queueTCP: Sender;
-    private readonly queueUDP: Sender;
+    private readonly workerTCP: Worker;
+    private readonly workerUDP: Worker;
 
     /**
      * Creates new DNS resolver socket.
@@ -36,7 +39,6 @@ export class ResolverSocket {
 
         this.options = {
             address: options.address,
-            buffer: options.buffer || Buffer.alloc(65537),
             keepOpenForMs: options.keepOpenForMs || 3000,
             onErrorIgnored: options.onErrorIgnored || (error => {
                 console.debug("Ignored by Resolver Socket: " + error);
@@ -45,35 +47,14 @@ export class ResolverSocket {
             timeoutInMs: options.timeoutInMs || 10000,
         };
 
-        const ignoreUnexpectedResponse = response =>
-            this.options.onErrorIgnored(new ResolverError(
-                ResolverErrorKind.ResponseIDUnexpected,
-                undefined,
-                response
-            ));
-        const rejectAsTooLong = task =>
-            task.reject(new ResolverError(
-                ResolverErrorKind.RequestTooLong,
-                task.request
-            ));
-        const resolveTaskWithResponse = (task, response) =>
-            task.resolve(response);
-
-        this.queueTCP = new SenderTCP(this.options);
-        this.queueTCP.on("overflow", rejectAsTooLong);
-        this.queueTCP.on("response", resolveTaskWithResponse);
-        this.queueTCP.on("unexpected", ignoreUnexpectedResponse);
-
-        this.queueUDP = new SenderUDP(this.options);
-        this.queueUDP.on("overflow", (task, length) => {
-            if (length <= this.options.buffer.length - 2) {
-                this.queueTCP.enqueue(task);
-            } else {
-                rejectAsTooLong(task);
-            }
-        });
-        this.queueUDP.on("response", resolveTaskWithResponse);
-        this.queueUDP.on("unexpected", ignoreUnexpectedResponse);
+        this.workerTCP = new Worker(
+            new TransportTCP(this.options),
+            this.options
+        );
+        this.workerUDP = new Worker(
+            new TransportUDP(this.options),
+            this.options
+        );
     }
 
     /**
@@ -82,14 +63,35 @@ export class ResolverSocket {
      * @param request Message to send.
      */
     public send(request: Message): Promise<Message> {
+        if (request.byteLength <= BYTE_LENGTH_MAX_UDP) {
+            return this.sendViaUDP(request);
+
+        } else if (request.byteLength <= BYTE_LENGTH_MAX_TCP) {
+            return this.sendViaTCP(request);
+        }
+        return Promise.reject(new ResolverError(
+            ResolverErrorKind.RequestTooLong,
+            request
+        ));
+    }
+
+    private sendViaUDP(request: Message): Promise<Message> {
         return new Promise((resolve, reject) => {
-            const task = new Task(request, resolve, reject);
-            if (request.flags.opcode !== OpCode.UPDATE) {
-                task.retriesLeft = 2;
-                this.queueUDP.enqueue(task);
-            } else {
-                this.queueTCP.enqueue(task);
-            }
+            const task = new Task(request, response => {
+                if (response.flags.tc) {
+                    this.workerTCP.assign(new Task(request, resolve, reject));
+                } else {
+                    resolve(response);
+                }
+            }, reject);
+            task.retriesLeft = 2;
+            this.workerUDP.assign(task);
+        });
+    }
+
+    private sendViaTCP(request: Message): Promise<Message> {
+        return new Promise((resolve, reject) => {
+            this.workerTCP.assign(new Task(request, resolve, reject));
         });
     }
 
@@ -97,8 +99,8 @@ export class ResolverSocket {
      * Closes socket.
      */
     public close() {
-        this.queueTCP.close();
-        this.queueUDP.close();
+        this.workerTCP.dismiss();
+        this.workerUDP.dismiss();
     }
 }
 
@@ -110,14 +112,6 @@ export interface ResolverSocketOptions {
      * IPv4 or IPv6 address, excluding port, of remote host.
      */
     readonly address: string;
-
-    /**
-     * Message buffer.
-     *
-     * Used for sending and receiving messages. The buffer must be large enough
-     * to house any messages of interest.
-     */
-    readonly buffer?: Buffer;
 
     /**
      * Time to keep socket open after successfully sending and receiving, in
@@ -163,59 +157,58 @@ class Task {
     public timeSentUnixMs?: number;
 }
 
-interface Sender extends events.EventEmitter {
-    close();
-
-    dequeue(id: number): Task;
-    dequeueAll(): Task[];
-    enqueue(task: Task);
-
-    on(event: "overflow", r: (task: Task, length: number) => void): this;
-    on(event: "response", r: (task: Task, response: Message) => void): this;
-    on(event: "unexpected", r: (response: Message) => void): this;
-}
-
-abstract class SenderBase extends events.EventEmitter implements Sender {
-    private readonly inbound: Map<number, Task>;
-
+class Worker {
     private closer: NodeJS.Timer;
-    private outbound: Array<Task>;
+    private enqueued: Array<Task>;
+    private expected: Map<number, Task>;
 
-    protected constructor(
+    public constructor(
         private readonly transport: Transport,
         private readonly options: ResolverSocketOptions,
     ) {
-        super();
-        this.inbound = new Map();
-        this.outbound = [];
+        this.enqueued = [];
+        this.expected = new Map();
 
-        const rejectAll = (reason: any) => this.dequeueAll()
-            .forEach(task =>
-                task.reject(reason instanceof ResolverError
-                    ? new ResolverError(
-                        reason.kind,
-                        reason.request || task.request,
-                        reason.response,
-                        reason.reason
-                    )
-                    : new ResolverError(
-                        ResolverErrorKind.Other,
-                        task.request,
-                        undefined,
-                        reason
-                    )));
+        const rejectAll = (reason: any) => {
+            let wrap: (task: Task) => ResolverError;
+            if (reason instanceof ResolverError) {
+                wrap = task => new ResolverError(
+                    reason.kind,
+                    reason.request || task.request,
+                    reason.response,
+                    reason.reason
+                );
+            } else {
+                wrap = task => new ResolverError(
+                    ResolverErrorKind.Other,
+                    task.request,
+                    undefined,
+                    reason
+                );
+            }
+            const reject = (task: Task) => task.reject(wrap(task));
+            for (let task of this.enqueued) {
+                reject(task);
+            }
+            for (let task of this.expected.values()) {
+                reject(task);
+            }
+        };
 
         transport.on("close", () => this.poll());
         transport.on("error", rejectAll);
         transport.on("open", () => this.poll());
-        transport.on("overflow", (request, length) =>
-            this.emit("overflow", this.dequeue(request.id), length));
         transport.on("response", response => {
-            const task = this.dequeue(response.id);
-            if (!task) {
-                this.emit("unexpected", response);
+            const task = this.expected.get(response.id);
+            if (task) {
+                this.expected.delete(response.id);
+                task.resolve(response)
             } else {
-                this.emit("response", task, response);
+                this.options.onErrorIgnored(new ResolverError(
+                    ResolverErrorKind.ResponseIDUnexpected,
+                    undefined,
+                    response
+                ));
             }
         });
         transport.on("timeout", () => rejectAll(new ResolverError(
@@ -223,15 +216,15 @@ abstract class SenderBase extends events.EventEmitter implements Sender {
         )));
 
         setInterval(() => {
-            if (this.inbound.size === 0) {
+            if (this.expected.size === 0) {
                 return;
             }
             const threshold = new Date().getTime() - this.options.timeoutInMs;
-            for (const [id, task] of this.inbound) {
+            for (const [id, task] of this.expected) {
                 if (threshold >= task.timeSentUnixMs) {
-                    this.inbound.delete(id);
+                    this.expected.delete(id);
                     if (task.retriesLeft-- > 0) {
-                        this.enqueue(task);
+                        this.assign(task);
                     } else {
                         task.reject(new ResolverError(
                             ResolverErrorKind.RequestUnanswered,
@@ -243,64 +236,33 @@ abstract class SenderBase extends events.EventEmitter implements Sender {
         }, Math.max(options.timeoutInMs / 20, 50)).unref();
     }
 
-    public close() {
-        this.transport.close();
-    }
-
-    public dequeue(id: number): Task {
-        for (let i = 0; i < this.outbound.length; ++i) {
-            const task = this.outbound[i];
-            if (task.request.id === id) {
-                this.outbound.splice(i, 1);
-                return task;
-            }
-        }
-
-        const task = this.inbound.get(id);
-        if (task) {
-            this.inbound.delete(id);
-            return task;
-        }
-
-        return null;
-    }
-
-    public dequeueAll(): Task[] {
-        const tasks = this.outbound;
-        for (let task of this.inbound.values()) {
-            tasks.push(task);
-        }
-        this.inbound.clear();
-        this.outbound = [];
-        return tasks;
-    }
-
-    public enqueue(task: Task) {
-        if (this.inbound.has(task.request.id)) {
+    public assign(task: Task) {
+        if (this.isAssigned(task.request.id)) {
             task.reject(new ResolverError(
                 ResolverErrorKind.RequestIDInUse,
                 task.request
             ));
         } else {
-            this.outbound.push(task);
+            this.enqueued.push(task);
             this.poll();
         }
     }
 
     private poll() {
-        if (this.outbound.length === 0) {
+        if (this.enqueued.length === 0) {
             return;
         }
         if (!this.transport.opened()) {
             this.transport.open();
             return;
         }
-        this.outbound.forEach(task => {
-            this.transport.send(task.request);
+
+        this.enqueued.forEach(task => {
             task.timeSentUnixMs = new Date().getTime();
-            this.inbound.set(task.request.id, task);
+            this.expected.set(task.request.id, task);
+            this.transport.send(task.request);
         });
-        this.outbound = [];
+        this.enqueued = [];
 
         this.deferCloseIfEmpty();
     }
@@ -317,7 +279,7 @@ abstract class SenderBase extends events.EventEmitter implements Sender {
     }
 
     private closeIfEmpty(): boolean {
-        if (this.inbound.size === 0 && this.outbound.length === 0) {
+        if (this.expected.size === 0 && this.enqueued.length === 0) {
             if (this.transport) {
                 this.transport.close();
             }
@@ -325,30 +287,31 @@ abstract class SenderBase extends events.EventEmitter implements Sender {
         }
         return false;
     }
-}
 
-class SenderTCP extends SenderBase {
-    public constructor(options: ResolverSocketOptions) {
-        super(new TransportTCP(options), options);
+    public isAssigned(id: number): boolean {
+        for (let i = 0; i < this.enqueued.length; ++i) {
+            const task = this.enqueued[i];
+            if (task.request.id === id) {
+                return true;
+            }
+        }
+        return this.expected.has(id);
     }
-}
 
-class SenderUDP extends SenderBase {
-    public constructor(options: ResolverSocketOptions) {
-        super(new TransportUDP(options), options);
+    public dismiss() {
+        this.transport.close();
     }
 }
 
 interface Transport extends events.EventEmitter {
+    close();
     open();
     opened(): boolean;
-    close();
 
     send(request: Message);
 
     on(event: "close", r: () => void): this;
     on(event: "error", r: (error: any) => void): this;
-    on(event: "overflow", r: (request: Message, length: number) => void): this;
     on(event: "response", r: (response: Message) => void): this;
     on(event: "open", r: () => void): this;
     on(event: "timeout", r: () => void): this;
@@ -400,7 +363,7 @@ class TransportTCP extends events.EventEmitter implements Transport {
             this.socket.end();
         });
 
-        let receiveBuffer: Buffer = this.options.buffer;
+        let receiveBuffer: Buffer = Buffer.alloc(2);
         let bytesExpected: number = undefined;
         let bytesReceived: number = 0;
 
@@ -425,7 +388,7 @@ class TransportTCP extends events.EventEmitter implements Transport {
                     bytesReceived = bytesExpected;
                     chunk = chunk.slice(bytesExpected);
                 } else {
-                    receiveBuffer = this.options.buffer;
+                    receiveBuffer = Buffer.alloc(bytesExpected);
                     bytesReceived = 0;
                 }
                 this.socket.removeListener("data", onLengthData);
@@ -467,28 +430,13 @@ class TransportTCP extends events.EventEmitter implements Transport {
     }
 
     send(request: Message) {
-        const buffer = this.options.buffer;
-        const writer = new Writer(buffer, 2);
-
-        request.write(writer);
-        if (request.transactionSigner) {
-            request.transactionSigner
-                .sign(request.id, buffer.slice(2, writer.offset()))
-                .write(writer);
-
-            // Increment ARCOUNT. See RFC 2845 section 3.4.1.
-            buffer.writeUInt16BE(request.additionals.length + 1, 10 + 2);
-        }
-
-        if (writer.overflowed) {
-            this.emit("overflow", request, this.options.buffer.length);
-            return;
-        }
+        const buffer = Buffer.alloc(request.byteLength + 2);
+        request.write(new Writer(buffer.slice(2)));
 
         // Write full message length at offset 0. See RFC 1035 section 4.2.2.
-        buffer.writeUInt16BE(writer.offset() - 2, 0);
+        buffer.writeUInt16BE(request.byteLength, 0);
 
-        this.socket.write(buffer.slice(0, writer.offset()));
+        this.socket.write(buffer);
     }
 }
 
@@ -555,16 +503,8 @@ class TransportUDP extends events.EventEmitter implements Transport {
     }
 
     send(request: Message) {
-        const writer = new Writer(this.options.buffer);
-        request.write(writer);
-        if (writer.offset() > 512 || writer.overflowed) {
-            this.emit("overflow", request, writer.overflowed
-                ? this.options.buffer.length
-                : writer.offset());
-            return;
-        }
         this.socket.send(
-            this.options.buffer.slice(0, writer.offset()),
+            request.write(),
             this.options.port,
             this.options.address
         );

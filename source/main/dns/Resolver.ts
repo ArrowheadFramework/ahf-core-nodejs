@@ -19,7 +19,6 @@ export class Resolver {
      * @param options Name server addresses or options object.
      */
     public constructor(options: ResolverOptions) {
-        const buffer = Buffer.alloc(65537);
         if (options.sockets.length === 0) {
             options = {
                 sockets: dns.getServers().map(address => ({ address })),
@@ -29,7 +28,6 @@ export class Resolver {
         options = {
             sockets: options.sockets.map(socket => ({
                 address: socket.address,
-                buffer: socket.buffer || buffer,
                 keepOpenForMs: socket.keepOpenForMs,
                 onUnhandledError: socket.onErrorIgnored || options
                     .onErrorIgnored,

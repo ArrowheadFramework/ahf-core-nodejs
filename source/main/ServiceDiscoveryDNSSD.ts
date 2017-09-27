@@ -18,7 +18,7 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
     private readonly browsingDomains: () => Promise<string[]>;
     private readonly registrationDomains: () => Promise<string[]>;
     private readonly hostnames: () => Promise<string[]>;
-    private readonly onUnhandledError: (error: Error) => void;
+    private readonly onErrorIgnored: (error: Error) => void;
 
     /**
      * Creates new DNS-SD `ServiceDiscovery` instance.
@@ -29,7 +29,7 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
         this.resolver = new dns.Resolver({
             sockets: (configuration.nameServers || [])
                 .map(address => ({ address })),
-            onUnhandledError: configuration.onUnhandledError,
+                onErrorIgnored: configuration.onErrorIgnored,
         });
         if (configuration.transactionKey) {
             if (typeof configuration.transactionKey.secret === "string") {
@@ -82,7 +82,7 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
 
         }
 
-        this.onUnhandledError = configuration.onUnhandledError || (error => {
+        this.onErrorIgnored = configuration.onErrorIgnored || (error => {
             console.debug("Unhandled service discovery error: %s", error);
         });
 
@@ -104,7 +104,7 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
     private removeAndLogAnyErrors<T>(results: Array<T | Error>): T[] {
         return results.reduce((browsingDomains, result) => {
             if (result instanceof Error) {
-                this.onUnhandledError(result);
+                this.onErrorIgnored(result);
             } else {
                 browsingDomains.push(result);
             }
@@ -264,13 +264,14 @@ export interface ServiceDiscoveryDNSSDConfiguration {
     },
 
     /**
-     * Function called whenever an error is not handled.
+     * Function called whenever an error occurs that cannot be meaningfully
+     * dealt with.
      *
      * Unhandled errors are the result of being able to recover from an error.
      * It might be of interest to log them, or handle them in some other way,
      * for which reason this callback may be provided.
      */
-    onUnhandledError?: (error: Error) => void;
+    onErrorIgnored?: (error: Error) => void;
 }
 
 class ServiceTypeDNSSD implements ServiceType {

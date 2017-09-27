@@ -1,12 +1,14 @@
 /**
  * An RFC 1035 compatible byte buffer reader.
+ *
+ * All methods return 0 or nothing if reading past end of wrapped buffer.
  */
 export class Reader {
     private cursor: number;
     private end: number;
 
     /**
-     * Buffer read from by this reader.
+     * Buffer read from.
      */
     public readonly source: Buffer;
 
@@ -106,21 +108,17 @@ export class Reader {
 
 /**
  * An RFC 1035 compatible byte buffer writer.
+ *
+ * Throws exception if writing past end of wrapped buffer.
  */
 export class Writer {
     private cursor: number;
     private end: number;
 
     /**
-     * The buffer written to by this writer.
+     * Buffer written to.
      */
     public readonly sink: Buffer;
-
-    /**
-     * Whether or not any write operation previously performed has been
-     * cancelled due to insufficient remaning sink space.
-     */
-    public overflowed: boolean;
 
     public constructor(sink: Buffer, offset = 0, end?: number) {
         this.cursor = offset;
@@ -143,10 +141,6 @@ export class Writer {
     }
 
     public write(source: Buffer) {
-        if (this.cursor + source.length > this.end) {
-            this.overflowed = true;
-            return;
-        }
         this.cursor += source.copy(this.sink, this.cursor);
     }
 
@@ -183,45 +177,29 @@ export class Writer {
     }
 
     public writeStrings(strings: string[] = [], lengthMask = 0xff) {
-        strings.forEach(string => {
+        for (let string of strings) {
             const length = string.length & lengthMask;
             if (length > 0) {
                 this.writeU8(length);
                 this.cursor += this.sink.write(string, this.cursor, length);
             }
-        });
+        }
         this.writeU8(0);
     }
 
     public writeU8(u8: number = 0) {
-        if (this.cursor + 1 > this.end) {
-            this.overflowed = true;
-            return;
-        }
         this.cursor = this.sink.writeUInt8(u8, this.cursor);
     }
 
     public writeU16(u16: number = 0) {
-        if (this.cursor + 2 > this.end) {
-            this.overflowed = true;
-            return;
-        }
         this.cursor = this.sink.writeUInt16BE(u16, this.cursor);
     }
 
     public writeU32(u32: number = 0) {
-        if (this.cursor + 4 > this.end) {
-            this.overflowed = true;
-            return;
-        }
         this.cursor = this.sink.writeUInt32BE(u32, this.cursor);
     }
 
     public writeU48(u48: number = 0) {
-        if (this.cursor + 6 > this.end) {
-            this.overflowed = true;
-            return;
-        }
         this.cursor = this.sink.writeUInt16BE(u48 / 4294967296, this.cursor);
         this.cursor = this.sink.writeUInt32BE(u48 & 0xffffffff, this.cursor);
     }

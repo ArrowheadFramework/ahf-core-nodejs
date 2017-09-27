@@ -7,6 +7,12 @@ import { read as readResourceData, ResourceData } from "./ResourceData";
  */
 export class ResourceRecord {
     /**
+     * Amount of bytes required to house the serialized form of this record
+     * as produced by the `write()` method of this instance.
+     */
+    public readonly byteLength: number;
+
+    /**
      * Creates new reasource record from given parameters.
      */
     public constructor(
@@ -15,7 +21,9 @@ export class ResourceRecord {
         public readonly dclass: number,
         public readonly ttl: number = 0,
         public readonly rdata?: ResourceData
-    ) { }
+    ) {
+        this.byteLength = 12 + name.length + (rdata ? rdata.byteLength : 0);
+    }
 
     /**
      * Reads record from given reader.
