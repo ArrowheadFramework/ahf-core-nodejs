@@ -6,6 +6,39 @@ export const TestResourceData: unit.Suite = {
     name: "ResourceData",
     units: [
         {
+            name: "Decode SOA",
+            test: recorder => utils.readAndCompare(
+                Buffer.from([
+                    // 9 arrowhead
+                    0x09, 0x61, 0x72, 0x72, 0x6f, 0x77, 0x68, 0x65, 0x61, 0x64,
+                    // 3 org
+                    0x03, 0x6f, 0x72, 0x67,
+                    // 0
+                    0x00,
+                    // 8 mail.dns
+                    0x08, 0x6d, 0x61, 0x69, 0x6c, 0x2e, 0x64, 0x6e, 0x73,
+                    // 9 POINTER TO 0
+                    0xc0, 0x00,
+                    // 1000
+                    0x00, 0x00, 0x03, 0xe8,
+                    // 3600
+                    0x00, 0x00, 0x0e, 0x10,
+                    // 30
+                    0x00, 0x00, 0x00, 0x1e,
+                    // 7200
+                    0x00, 0x00, 0x1c, 0x20,
+                    // 1800
+                    0x00, 0x00, 0x07, 0x08,
+                ]),
+                rd.SOA.read,
+                new rd.SOA(
+                    "arrowhead.org.",
+                    "mail\\.dns.arrowhead.org.",
+                    1000, 3600, 30, 7200, 1800
+                )
+            ),
+        },
+        {
             name: "Encode A",
             test: recorder => utils.writeAndCompare(
                 new rd.A("127.0.0.1"),

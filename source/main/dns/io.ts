@@ -45,7 +45,9 @@ export class Reader {
                 }
                 break;
             }
-            name += this.read(length).toString("binary") + ".";
+            name += this.read(length)
+                .toString("binary")
+                .replace(".", "\\.") + ".";
         };
         return name;
     }
