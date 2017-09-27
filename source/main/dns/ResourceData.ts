@@ -79,9 +79,18 @@ export class AAAA implements ResourceData {
     }
 
     public write(writer: Writer) {
-        this.address.split(".").forEach(part => {
-            const u16 = Number.parseInt(part, 16) & 0xffff;
-            writer.writeU8(u16);
+        let sections = this.address.split(":").slice(0, 8);
+        let missing = (8 - sections.length);
+        let indexOffset = 0;
+        return sections.forEach((section, index) => {
+            if (section.length === 0) {
+                do {
+                    writer.writeU16(0);
+                } while (--missing >= 0);
+            } else {
+                const u16 = Number.parseInt(section, 16) & 0xffff;
+                writer.writeU16(u16);
+            }
         });
     }
 }
