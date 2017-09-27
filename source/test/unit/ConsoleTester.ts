@@ -29,7 +29,7 @@ export class ConsoleTester implements Tester {
         const executeUnit = (
             suite: Suite,
             unit: Unit,
-            ...extras: any[]
+            extras: any[]
         ): Promise<void> => new Promise(resolve => {
             let completed = false;
             let timeout;
@@ -46,9 +46,14 @@ export class ConsoleTester implements Tester {
                 return false;
             }
 
+            const logPrefix = this.verbose ? "  - " : "";
+            const logSuite = this.verbose
+                ? ""
+                : (suite.name + " > ");
+
             const fail = (reason?: any) => {
                 if (tryComplete()) {
-                    console.log(" - FAIL " + suite.name + "." + unit.name +
+                    console.log(logPrefix + "FAIL " + logSuite + unit.name +
                         (reason ? (": " + reason) : "")
                     );
                     failCount += 1;
@@ -57,7 +62,7 @@ export class ConsoleTester implements Tester {
             const pass = (reason?: any) => {
                 if (tryComplete()) {
                     if (this.verbose) {
-                        console.log(" - PASS " + suite.name + "." + unit.name +
+                        console.log(logPrefix + "PASS " + logSuite + unit.name +
                             (reason ? (": " + reason) : "")
                         );
                     }
@@ -66,7 +71,7 @@ export class ConsoleTester implements Tester {
             };
             const skip = (reason?: any) => {
                 if (tryComplete()) {
-                    console.log(" - SKIP " + suite.name + "." + unit.name +
+                    console.log(logPrefix + "SKIP " + logSuite + unit.name +
                         (reason ? (": " + reason) : "")
                     );
                     skipCount += 1;
@@ -83,7 +88,7 @@ export class ConsoleTester implements Tester {
             try {
                 unit.test({ fail, pass, skip }, ...extras);
                 if (!unit.timeoutInMs) {
-                    pass(unit);
+                    pass();
                 }
             } catch (error) {
                 fail(error);
@@ -92,12 +97,13 @@ export class ConsoleTester implements Tester {
 
         const executeSuite = (suite: Suite) => new Promise(resolve => {
             if (this.verbose) {
+                console.log();
                 console.log("> " + suite.name);
             }
 
             let before: Promise<any[]>;
-            if (suite.before) {
-                let extras = suite.before();
+            if (suite.setup) {
+                let extras = suite.setup();
                 before = (extras instanceof Promise)
                     ? extras
                     : Promise.resolve(extras);
@@ -108,11 +114,8 @@ export class ConsoleTester implements Tester {
             before.then(extras => Promise
                 .all(suite.units.map(unit => executeUnit(suite, unit, extras)))
                 .then(() => {
-                    if (this.verbose) {
-                        console.log();
-                    }
-                    if (suite.after) {
-                        let promise = suite.after(...extras);
+                    if (suite.teardown) {
+                        let promise = suite.teardown(...extras);
                         if (promise instanceof Promise) {
                             promise.then(() => resolve());
                             return;
@@ -124,19 +127,30 @@ export class ConsoleTester implements Tester {
 
         const suites = this.suites
             .slice()
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .sort((a, b) => b.name.localeCompare(a.name));
 
-        return Promise
-            .all(suites.map(suite => executeSuite(suite)))
-            .then(() => new Promise<number>(resolve => {
-                if (failCount > 0 || skipCount > 0 || this.verbose) {
-                    console.log("> Test Results");
-                    console.log(" - Failed units:  " + failCount);
-                    console.log(" - Passed units:  " + passCount);
-                    console.log(" - Skipped units: " + skipCount);
+        if (this.verbose) {
+            console.log("> Running unit tests ...");
+        }
+
+        return new Promise(resolve => {
+            const nextSuite = () => {
+                if (suites.length === 0) {
+                    if (failCount > 0 || skipCount > 0 || this.verbose) {
+                        console.log();
+                        console.log("> Test Results");
+                        console.log("  - Failed units:  " + failCount);
+                        console.log("  - Passed units:  " + passCount);
+                        console.log("  - Skipped units: " + skipCount);
+                        console.log();
+                    }
+                    resolve();
+                } else {
+                    executeSuite(suites.pop()).then(() => nextSuite());
                 }
-                resolve(failCount === 0 ? 0 : 1);
-            }));
+            };
+            nextSuite();
+        });
     }
 }
 

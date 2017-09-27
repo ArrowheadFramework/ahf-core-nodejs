@@ -77,23 +77,23 @@ export interface Suite {
     name: string;
 
     /**
-     * Units of suite.
-     */
-    units: Unit[];
-
-    /**
      * Function called before suite units.
      *
      * Any returned values are provided to all suite units on execution.
      */
-    before?: () => PromiseLike<any[]> | any[];
+    setup?: () => PromiseLike<any[]> | any[];
 
     /**
      * Function called after suite units.
      *
      * The function is provided with any values returned by `before`, if set.
      */
-    after?: (...extras: any[]) => PromiseLike<void> | void;
+    teardown?: (...extras: any[]) => PromiseLike<void> | void;
+
+    /**
+     * Units of suite.
+     */
+    units: Unit[];
 }
 
 /**
