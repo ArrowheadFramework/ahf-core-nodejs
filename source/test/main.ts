@@ -3,6 +3,7 @@ import * as unit from "./unit";
 
 const tester = new unit.ConsoleTester({ verbose: true });
 
+tester.register(dns.TestMessage);
 tester.register(dns.TestResourceData);
 tester.register(dns.TestResourceRecord);
 
