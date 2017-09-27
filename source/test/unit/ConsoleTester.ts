@@ -17,8 +17,9 @@ export class ConsoleTester implements Tester {
         this.verbose = options.verbose || false;
     }
 
-    public register(suite: Suite) {
+    public register(suite: Suite): this {
         this.suites.push(suite);
+        return this;
     }
 
     public run(): Promise<number> {
@@ -143,6 +144,8 @@ export class ConsoleTester implements Tester {
                         console.log("  - Passed units:  " + passCount);
                         console.log("  - Skipped units: " + skipCount);
                         console.log();
+                    } else {
+                        console.log("All " + passCount + " tests passed.")
                     }
                     resolve();
                 } else {

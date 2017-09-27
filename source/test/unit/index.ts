@@ -105,7 +105,7 @@ export interface Tester {
      * 
      * @param suite Suite to register.
      */
-    register(suite: Suite);
+    register(suite: Suite): this;
 
     /**
      * Executes each test in each unit.
