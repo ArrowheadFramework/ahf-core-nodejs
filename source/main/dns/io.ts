@@ -177,7 +177,7 @@ export class Writer {
 
     public writeString(string: string = "") {
         this.writeU8(string.length);
-        this.sink.write(string, this.cursor);
+        this.cursor += this.sink.write(string, this.cursor);
     }
 
     public writeStrings(strings: string[] = [], lengthMask = 0xff) {
