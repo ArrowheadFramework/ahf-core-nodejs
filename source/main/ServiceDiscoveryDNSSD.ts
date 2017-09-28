@@ -140,7 +140,7 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
                 const type = record.serviceType + "." + domain;
                 const name = record.serviceName + "." + type;
 
-                const ttl = record.timeToLiveInSeconds || 60;
+                const ttl = 60; // TODO: Configurable?
                 const updates = [
                     new dns.ResourceRecord(services, dns.Type.PTR,
                         dns.DClass.IN, ttl, new dns.PTR(type)),
