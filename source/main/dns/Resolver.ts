@@ -18,7 +18,10 @@ export class Resolver {
      *
      * @param options Name server addresses or options object.
      */
-    public constructor(options: ResolverOptions) {
+    public constructor(options: ResolverOptions = {}) {
+        if (!options.sockets) {
+            options = { sockets: [] };
+        }
         if (options.sockets.length === 0) {
             options = {
                 sockets: dns.getServers().map(address => ({ address })),
@@ -29,7 +32,7 @@ export class Resolver {
             sockets: options.sockets.map(socket => ({
                 address: socket.address,
                 keepOpenForMs: socket.keepOpenForMs,
-                onUnhandledError: socket.onErrorIgnored || options
+                onErrorIgnored: socket.onErrorIgnored || options
                     .onErrorIgnored,
                 port: socket.port,
                 timeoutInMs: socket.timeoutInMs,
@@ -298,8 +301,10 @@ export enum ResolverErrorKind {
 export interface ResolverOptions {
     /**
      * Describes the sockets to use for communicating with remote DNS servers.
+     *
+     * If not provided, any domain servers known by the hosting system are used.
      */
-    readonly sockets: ResolverSocketOptions[],
+    readonly sockets?: ResolverSocketOptions[],
 
     /**
      * Called, if given, whenever an error occurrs that cannot be meaningfully
