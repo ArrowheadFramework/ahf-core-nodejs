@@ -51,19 +51,17 @@ to adhere to the below guidelines in order to be accepted.
 
 Having dependencies invariably leads to a loss of control, to some extent.
 Version conflicts, security issues, other bugs, and the disk space required to
-use this package can end up being out of reach of the developers of this pakage.
-Avoiding dependencies to the furthest extent possible is therefore a primary
-objective.
+use this package can end up being out of reach of its developers. Avoiding
+dependencies is therefore a primary objective.
 
 #### Limited Unit Testing
 
-100% code unit test coverage is unlikely to ever become an ambition of this
-project. Apart from ensuring behaviour correctness, unit tests lead to making
-code changes more difficult, as either new units must be written, or existing
-units be changed whenever code is added or modified. By focusing on bugfixes,
-other difficult regions of code, and security-critical functionality, unit tests
-are employed where needed the most, and the cost of maintaining them is kept at
-a reasonable low.
+Apart from ensuring behaviour correctness, unit tests lead to making code changes
+more difficult, as either new units must be written, or existing units be changed
+whenever code is added or modified. By focusing on bugfixes, other difficult
+regions of code, and security-critical functionality, unit tests are employed
+where needed the most, and the cost of maintaining them is kept at a reasonable
+low.
 
 #### No Integration Tests
 
