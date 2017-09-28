@@ -1,7 +1,5 @@
 /**
  * An RFC 1035 compatible byte buffer reader.
- *
- * All methods return 0 or nothing if reading past end of wrapped buffer.
  */
 export class Reader {
     private readonly source: Buffer;
@@ -10,7 +8,11 @@ export class Reader {
     private end: number;
 
     /**
-     * Buffer read from.
+     * Creates new DNS reader.
+     *
+     * @param source Source of reads.
+     * @param offset Offset from beginning of source where reading will start.
+     * @param end Offset from beginning of source reading may not pass.
      */
     public constructor(source: Buffer, offset = 0, end?: number) {
         this.source = source;
@@ -19,6 +21,13 @@ export class Reader {
         this.end = end ? Math.min(end, source.length) : source.length;
     }
 
+    /**
+     * Consumes `length` bytes and returns new `Reader` that can only read from
+     * the consumed region.
+     *
+     * @param length Amount of bytes to consume.
+     * @return New reader.
+     */
     public pop(length: number): Reader {
         const reader = new Reader(
             this.source,
@@ -29,6 +38,15 @@ export class Reader {
         return reader;
     }
 
+    /**
+     * Forwards the internal cursor `length` bytes and returns a `Buffer`
+     * referring to the skipped bytes.
+     *
+     * Note that writing to the returned buffer will cause the buffer wrapped
+     * by this `Reader` to be modified.
+     *
+     * @param length Amount of bytes to read.
+     */
     public read(length: number): Buffer {
         const cursor = Math.min(this.end, this.cursor + length);
         const buffer = this.source.slice(this.cursor, cursor);
@@ -36,6 +54,9 @@ export class Reader {
         return buffer;
     }
 
+    /**
+     * @return A read DNS name.
+     */
     public readName(): string {
         let name = "";
         let length;
@@ -55,6 +76,9 @@ export class Reader {
         return name;
     }
 
+    /**
+     * @return A series of read DNS character strings.
+     */
     public readStrings(): string[] {
         const strings = new Array();
         let length;
@@ -65,24 +89,36 @@ export class Reader {
         return strings;
     }
 
+    /**
+     * @return Read byte.
+     */
     public readU8(): number {
         const u8 = this.source.readUInt8(this.cursor);
         this.cursor += 1;
         return u8;
     }
 
+    /**
+     * @return Read unsigned 16-bit word.
+     */
     public readU16(): number {
         const u16 = this.source.readUInt16BE(this.cursor);
         this.cursor += 2;
         return u16;
     }
 
+    /**
+     * @return Read unsigned 32-bit word.
+     */
     public readU32(): number {
         const u32 = this.source.readUInt32BE(this.cursor);
         this.cursor += 4;
         return u32;
     }
 
+    /**
+     * @return Read unsigned 48-bit word.
+     */
     public readU48(): number {
         const hi = this.source.readUInt16BE(this.cursor);
         const lo = this.source.readUInt32BE(this.cursor + 2);
@@ -93,8 +129,6 @@ export class Reader {
 
 /**
  * An RFC 1035 compatible byte buffer writer.
- *
- * Throws exception if writing past end of wrapped buffer.
  */
 export class Writer {
     private readonly sink: Buffer;
@@ -104,7 +138,14 @@ export class Writer {
     private end: number;
 
     /**
-     * Buffer written to.
+     * Creates new DNS writer.
+     *
+     * Note that the provided `sink` must be large enough to house whatever is
+     * intended to be written.
+     *
+     * @param sink Target of writes.
+     * @param offset Offset from beginning of sink where writing will start.
+     * @param end Offset from beginning of sink writing may not pass.
      */
     public constructor(sink: Buffer, offset = 0, end?: number) {
         this.sink = sink;
@@ -125,10 +166,23 @@ export class Writer {
         return this.sink.slice(this.begin, this.cursor);
     }
 
+    /**
+     * Offset from internal cursor starting position. Will always be exactly
+     * the same as the amount of bytes written.
+     *
+     * @return Writer offset.
+     */
     public offset(): number {
         return this.cursor;
     }
 
+    /**
+     * Consumes `length` bytes and returns new `Writer` that can only write to
+     * the consumed region.
+     *
+     * @param length Amount of bytes to consume.
+     * @return New writer.
+     */
     public pop(length: number): Writer {
         const writer = new Writer(
             this.sink,
@@ -139,10 +193,24 @@ export class Writer {
         return writer;
     }
 
+    /**
+     * Writes contents of entire given buffer.
+     *
+     * @param source Buffer to write.
+     */
     public write(source: Buffer) {
         this.cursor += source.copy(this.sink, this.cursor);
     }
 
+    /**
+     * Writes given string as a DNS name, which is a series of labels separated
+     * by ASCII dots. Backslash (\) may be used to escape dots or other
+     * backslashes.
+     *
+     * No label of a DNS name may be longer than 63 bytes.
+     *
+     * @param name Name to write.
+     */
     public writeName(name: string = "") {
         const labels = [];
         let label = "";
@@ -170,6 +238,13 @@ export class Writer {
         this.writeStrings(labels, 63);
     }
 
+    /**
+     * Writes series of short strings.
+     *
+     * @param strings Strings to write.
+     * @param lengthLimit Longest allowed individual string. May not be larger
+     * than 255.
+     */
     public writeStrings(strings: string[] = [], lengthLimit = 255) {
         if (lengthLimit > 255) {
             throw new Error("Length limit too large: " + lengthLimit);
@@ -187,18 +262,30 @@ export class Writer {
         this.writeU8(0);
     }
 
+    /**
+     * @param u8 Byte to write.
+     */
     public writeU8(u8: number) {
         this.cursor = this.sink.writeUInt8(u8, this.cursor);
     }
 
+    /**
+     * @param u16 Unsigned 16-bit word to write.
+     */
     public writeU16(u16: number) {
         this.cursor = this.sink.writeUInt16BE(u16, this.cursor);
     }
 
+    /**
+     * @param u32 Unsigned 32-bit word to write.
+     */
     public writeU32(u32: number) {
         this.cursor = this.sink.writeUInt32BE(u32, this.cursor);
     }
 
+    /**
+     * @param u48 Unsigned 48-bit word to write.
+     */
     public writeU48(u48: number) {
         this.cursor = this.sink.writeUInt16BE(u48 / 4294967296, this.cursor);
         this.cursor = this.sink.writeUInt32BE(u48 & 0xffffffff, this.cursor);
