@@ -30,10 +30,10 @@ export interface ServiceDiscovery {
     /**
      * Removes existing record from discovery service.
      *
-     * @param record Service record to remove.
+     * @param identifier Identifies record to remove.
      * @return Promise used to track operation completion.
      */
-    unpublish(record: ServiceRecord): Promise<void>;
+    unpublish(identifier: ServiceIdentifier): Promise<void>;
 }
 
 /**

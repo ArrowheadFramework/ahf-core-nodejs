@@ -163,11 +163,11 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
             .then(respones => undefined);
     }
 
-    public unpublish(record: ServiceRecord): Promise<void> {
+    public unpublish(identifier: ServiceIdentifier): Promise<void> {
         return this.registrationDomains()
             .then(domains => domains.map(domain => {
-                const type = record.serviceType + "." + domain;
-                const name = record.serviceName + "." + type;
+                const type = identifier.serviceType + "." + domain;
+                const name = identifier.serviceName + "." + type;
 
                 const updates = [
                     new dns.ResourceRecord(type, dns.Type.PTR, dns.DClass.IN,
