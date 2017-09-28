@@ -32,15 +32,17 @@ export class TransactionSigner {
      * @param keyName Name of key.
      * @param algorithmName Name of hashing algorithm to use with key.
      * @param fudge Seconds of error permitted in created TSIG timestamps.
+     * @param timeSigned Time of signaure generation. Defaults to actual time.
      */
     public constructor(
         key: string | Buffer,
         public readonly keyName: string,
-        public readonly algorithmName: string = "HMAC-MD5.SIG-ALG.REG.INT",
-        public readonly fudge = 300
+        public readonly algorithmName: string = "hmac-md5.sig-alg.reg.int",
+        public readonly fudge = 300,
+        public readonly timeSigned?: Date,
     ) {
         if (typeof key === "string") {
-            this.key = Buffer.from(key);
+            this.key = Buffer.from(key, "base64");
         } else {
             this.key = key;
         }
@@ -66,7 +68,8 @@ export class TransactionSigner {
      * @param messageBuffer Buffer containing message to sign.
      */
     public sign(messageID: number, messageBuffer: Buffer): ResourceRecord {
-        const timestamp = Math.floor(new Date().getTime() / 1000);
+        const timestamp = Math.floor((this.timeSigned || new Date())
+            .getTime() / 1000);
         const sslName = algorithmNameToSSLName(this.algorithmName);
         const mac = crypto.createHmac(sslName, this.key);
 
@@ -76,16 +79,16 @@ export class TransactionSigner {
             this.algorithmName.length));
 
         // See RFC 2845 section 3.4.2.
-        writer.writeName(this.keyName);
+        writer.writeName(this.keyName.toLowerCase());
         writer.writeU16(DClass.ANY);
         writer.writeU32(0);
-        writer.writeName(this.algorithmName);
+        writer.writeName(this.algorithmName.toLowerCase());
         writer.writeU48(timestamp);
         writer.writeU16(this.fudge);
         writer.writeU16(0);
         writer.writeU16(0);
 
-        mac.update(writer.sink);
+        mac.update(writer.sink.slice(0, writer.offset()));
 
         return new ResourceRecord(this.keyName, Type.TSIG, DClass.ANY, 0,
             new TSIG(this.algorithmName, timestamp, this.fudge, mac.digest(),
@@ -93,7 +96,7 @@ export class TransactionSigner {
 
         function algorithmNameToSSLName(algorithmName: string): string {
             const algorithmNameUpper = algorithmName.toUpperCase();
-            if (algorithmNameUpper === "HMAC-MD5.SIG-ALG.REG.INT") {
+            if (algorithmNameUpper.startsWith("HMAC-MD5.SIG-ALG.REG.INT")) {
                 return "MD5";
             }
             if (algorithmNameUpper.startsWith("HMAC-")) {
