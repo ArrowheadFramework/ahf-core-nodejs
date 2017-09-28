@@ -353,7 +353,7 @@ export class TXT implements ResourceData {
         });
         writer.writeStrings(strings);
 
-        return new TXT(writer.sink.toString("binary"));
+        return new TXT(writer.sink.toString());
 
         function format(key: string): string {
             let result = "";
@@ -381,7 +381,7 @@ export class TXT implements ResourceData {
     }
 
     public static read(reader: Reader, rdlength: number): TXT {
-        return new TXT(reader.read(rdlength).toString("binary"));
+        return new TXT(reader.read(rdlength).toString());
     }
 
     /**
@@ -390,7 +390,7 @@ export class TXT implements ResourceData {
      */
     public intoAttributes(): { [key: string]: string } {
         let attributes = {};
-        new Reader(Buffer.from(this.txtData, "binary"))
+        new Reader(Buffer.from(this.txtData))
             .readStrings()
             .forEach(string => {
                 const pair = split(string);
@@ -425,6 +425,6 @@ export class TXT implements ResourceData {
     }
 
     public write(writer: Writer) {
-        writer.write(Buffer.from(this.txtData, "binary"));
+        writer.write(Buffer.from(this.txtData));
     }
 }

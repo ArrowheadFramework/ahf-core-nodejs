@@ -48,14 +48,14 @@ export class Reader {
                 break;
             }
             name += this.read(length)
-                .toString("binary")
+                .toString()
                 .replace(".", "\\.") + ".";
         };
         return name;
     }
 
     public readString(): string {
-        return this.read(this.readU8()).toString("binary");
+        return this.read(this.readU8()).toString();
     }
 
     public readStrings(): string[] {
@@ -63,7 +63,7 @@ export class Reader {
         let length;
         do {
             length = this.readU8();
-            strings.push(this.read(length).toString("binary"));
+            strings.push(this.read(length).toString());
         } while (length > 0);
         return strings;
     }
