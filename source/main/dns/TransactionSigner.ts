@@ -46,8 +46,9 @@ export class TransactionSigner {
         } else {
             this.key = key;
         }
-        this.byteLength = 30 + keyName.length + algorithmName.length +
-            this.key.length;
+        this.byteLength = keyName.length + (keyName.endsWith(".") ? 1 : 2) +
+            algorithmName.length + (algorithmName.endsWith(".") ? 1 : 2) +
+            this.key.length + 26;
         if (this.fudge < 0 || this.fudge > 0x7fff) {
             this.fudge = 300;
         }

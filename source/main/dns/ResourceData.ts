@@ -130,7 +130,7 @@ export class CNAME implements ResourceData {
     public readonly byteLength: number;
 
     public constructor(public readonly cname: string) {
-        this.byteLength = 2 + cname.length;
+        this.byteLength = cname.length + (cname.endsWith(".") ? 1 : 2);
     }
 
     public static read(reader: Reader): CNAME {
@@ -152,7 +152,8 @@ export class MX implements ResourceData {
         public readonly preference: number,
         public readonly exchange: string
     ) {
-        this.byteLength = 4 + exchange.length;
+        this.byteLength = 2 + exchange.length +
+            (exchange.endsWith(".") ? 1 : 2);
     }
 
     public static read(reader: Reader): MX {
@@ -172,7 +173,7 @@ export class NS implements ResourceData {
     public readonly byteLength: number;
 
     public constructor(public readonly nsdname: string) {
-        this.byteLength = 2 + nsdname.length;
+        this.byteLength = nsdname.length + (nsdname.endsWith(".") ? 1 : 2);
     }
 
     public static read(reader: Reader): NS {
@@ -191,7 +192,7 @@ export class PTR implements ResourceData {
     public readonly byteLength: number;
 
     public constructor(public readonly ptrdname: string) {
-        this.byteLength = 2 + ptrdname.length;
+        this.byteLength = ptrdname.length + (ptrdname.endsWith(".") ? 1 : 2);
     }
 
     public static read(reader: Reader): PTR {
@@ -218,7 +219,8 @@ export class SOA implements ResourceData {
         public readonly expire: number,
         public readonly minimum: number
     ) {
-        this.byteLength = 24 + mname.length + rname.length;
+        this.byteLength = 20 + mname.length + (mname.endsWith(".") ? 1 : 2) +
+            rname.length + (rname.endsWith(".") ? 1 : 2);
     }
 
     public static read(reader: Reader): SOA {
@@ -256,7 +258,7 @@ export class SRV implements ResourceData {
         public readonly port: number,
         public readonly target: string
     ) {
-        this.byteLength = 8 + target.length;
+        this.byteLength = 6 + target.length + (target.endsWith(".") ? 1 : 2);
     }
 
     public static read(reader: Reader): SRV {
@@ -291,7 +293,8 @@ export class TSIG implements ResourceData {
         public readonly error: number,
         public readonly otherData: Buffer
     ) {
-        this.byteLength = 18 + algorithmName.length + mac.length +
+        this.byteLength = 16 + algorithmName.length +
+            (algorithmName.endsWith(".") ? 1 : 2) + mac.length +
             otherData.length;
     }
 

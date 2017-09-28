@@ -22,7 +22,8 @@ export class ResourceRecord {
         public readonly ttl: number = 0,
         public readonly rdata?: ResourceData
     ) {
-        this.byteLength = 12 + name.length + (rdata ? rdata.byteLength : 0);
+        this.byteLength = 10 + name.length + (name.endsWith(".") ? 1 : 2) +
+            (rdata ? rdata.byteLength : 0);
     }
 
     /**
