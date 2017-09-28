@@ -39,12 +39,13 @@ export class TransactionSigner {
         public readonly algorithmName: string = "HMAC-MD5.SIG-ALG.REG.INT",
         public readonly fudge = 300
     ) {
-        this.byteLength = 18 + algorithmName.length + key.length;
         if (typeof key === "string") {
             this.key = Buffer.from(key);
         } else {
             this.key = key;
         }
+        this.byteLength = 30 + keyName.length + algorithmName.length +
+            this.key.length;
         if (this.fudge < 0 || this.fudge > 0x7fff) {
             this.fudge = 300;
         }
