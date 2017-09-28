@@ -1,7 +1,7 @@
 # Arrowhead Core for Node.js
 
 [Arrowhead][arrow] core utilities for [node.js][nodej]. This package contains
-code for interfacing against the _Arrowhead Manatory Core Services_, which are
+code for interfacing against the _Arrowhead Mandatory Core Services_, which are
 the _ServiceRegistry_, _AuthorisationSystem_ and the _OrchestrationSystem_.
 More information about the mentioned services may be read in the
 [Arrowhead Wiki][arwik].
@@ -42,6 +42,8 @@ to adhere to the below guidelines in order to be accepted.
   question is either (1) a non-trivial bugfix, (2) understood to be difficult to
   get right, or (3) contains security-critical functionality.
 - Integration tests are not to be part of this repository.
+- The package is not to contain any implementations of cryptographic primitives,
+  such as a secure hash functions, other kind of encryption function, etc.
 
 ### Rationale
 
@@ -53,12 +55,12 @@ use this package can end up being out of reach of the developers of this pakage.
 Avoiding dependencies to the furthest extent possible is therefore a primary
 objective.
 
-#### Tests are Expensive
+#### Limited Unit Testing
 
 100% code unit test coverage is unlikely to ever become an ambition of this
 project. Apart from ensuring behaviour correctness, unit tests lead to making
 code changes more difficult, as either new units must be written, or existing
-units be changed, whenever code is added or modified. By focusing on bugfixes,
+units be changed whenever code is added or modified. By focusing on bugfixes,
 other difficult regions of code, and security-critical functionality, unit tests
 are employed where needed the most, and the cost of maintaining them is kept at
 a reasonable low.
@@ -72,6 +74,12 @@ behave as expected. Integration tests may with advantage be put into separate
 projects, each making up a Technology Compatibility Kit (TCK), which may be used
 to test not just a single project, but any other such that aim to be compatible
 with it.
+
+#### No Cryptographic Primitives
+
+Cryptography is hard to get right. The cryptographic primitives provided via
+node.js through OpenSSL ought to be enough for any secure functionality
+implemented in this package.
 
 [arrow]: http://www.arrowhead.eu/
 [arwik]: https://forge.soa4d.org/plugins/mediawiki/wiki/arrowhead-f/index.php/Main_Page
