@@ -88,7 +88,7 @@ export class TransactionSigner {
         writer.writeU16(0);
         writer.writeU16(0);
 
-        mac.update(writer.sink.slice(0, writer.offset()));
+        mac.update(writer.buffer());
 
         return new ResourceRecord(this.keyName, Type.TSIG, DClass.ANY, 0,
             new TSIG(this.algorithmName, timestamp, this.fudge, mac.digest(),

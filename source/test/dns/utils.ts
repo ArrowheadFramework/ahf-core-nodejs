@@ -21,16 +21,9 @@ export function readWriteAndCompare(
 export function writeAndCompare(writable: Writable, buffer: Buffer) {
     const writer = new io.Writer(_buffer);
     writable.write(writer);
-    if (writer.offset() !== buffer.length) {
-        const length = Math.min(writer.offset(), buffer.length) + 3;
+    if (buffer.compare(writer.buffer()) !== 0) {
         assert.fail(
-            writer.sink.toString("hex", 0, length) + "...",
-            buffer.toString("hex")
-        );
-    }
-    if (buffer.compare(writer.sink, 0, buffer.length) !== 0) {
-        assert.fail(
-            writer.sink.toString("hex", 0, buffer.length),
+            writer.buffer().toString("hex", 0, buffer.length),
             buffer.toString("hex")
         );
     }

@@ -353,7 +353,7 @@ export class TXT implements ResourceData {
         });
         writer.writeStrings(strings);
 
-        return new TXT(writer.sink.toString());
+        return new TXT(writer.buffer().toString());
 
         function format(key: string): string {
             let result = "";

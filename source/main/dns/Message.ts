@@ -168,14 +168,15 @@ export class Message {
 
         if (this.transactionSigner) {
             this.transactionSigner
-                .sign(this.id, writer.sink.slice(0, writer.offset()))
+                .sign(this.id, writer.buffer())
                 .write(writer);
 
+
             // Increment ARCOUNT. See RFC 2845 section 3.4.1.
-            writer.sink.writeUInt16BE(this.additionals.length + 1, 10);
+            writer.buffer().writeUInt16BE(this.additionals.length + 1, 10);
         }
 
-        return writer.sink;
+        return writer.buffer();
     }
 
     /**

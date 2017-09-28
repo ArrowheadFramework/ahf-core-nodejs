@@ -4,18 +4,19 @@
  * All methods return 0 or nothing if reading past end of wrapped buffer.
  */
 export class Reader {
+    private readonly source: Buffer;
+
     private cursor: number;
     private end: number;
 
     /**
      * Buffer read from.
      */
-    public readonly source: Buffer;
-
     public constructor(source: Buffer, offset = 0, end?: number) {
+        this.source = source;
+
         this.cursor = offset;
         this.end = end ? Math.min(end, source.length) : source.length;
-        this.source = source;
     }
 
     public pop(length: number): Reader {
@@ -54,10 +55,6 @@ export class Reader {
         return name;
     }
 
-    public readString(): string {
-        return this.read(this.readU8()).toString();
-    }
-
     public readStrings(): string[] {
         const strings = new Array();
         let length;
@@ -69,36 +66,24 @@ export class Reader {
     }
 
     public readU8(): number {
-        if (this.cursor + 1 > this.end) {
-            return 0;
-        }
         const u8 = this.source.readUInt8(this.cursor);
         this.cursor += 1;
         return u8;
     }
 
     public readU16(): number {
-        if (this.cursor + 2 > this.end) {
-            return 0;
-        }
         const u16 = this.source.readUInt16BE(this.cursor);
         this.cursor += 2;
         return u16;
     }
 
     public readU32(): number {
-        if (this.cursor + 4 > this.end) {
-            return 0;
-        }
         const u32 = this.source.readUInt32BE(this.cursor);
         this.cursor += 4;
         return u32;
     }
 
     public readU48(): number {
-        if (this.cursor + 6 > this.end) {
-            return 0;
-        }
         const hi = this.source.readUInt16BE(this.cursor);
         const lo = this.source.readUInt32BE(this.cursor + 2);
         this.cursor += 6;
@@ -112,18 +97,32 @@ export class Reader {
  * Throws exception if writing past end of wrapped buffer.
  */
 export class Writer {
+    private readonly sink: Buffer;
+
+    private begin: number;
     private cursor: number;
     private end: number;
 
     /**
      * Buffer written to.
      */
-    public readonly sink: Buffer;
-
     public constructor(sink: Buffer, offset = 0, end?: number) {
+        this.sink = sink;
+
+        this.begin = offset;
         this.cursor = offset;
         this.end = end ? Math.min(end, sink.length) : sink.length;
-        this.sink = sink;
+    }
+
+    /**
+     * Provides a window to the portion of the internal buffer that has been
+     * written to. Note that modifying the returned buffer will also cause the
+     * internal buffer to be modified.
+     *
+     * @return Reference to the part of the wrapped `Buffer` written to.
+     */
+    public buffer(): Buffer {
+        return this.sink.slice(this.begin, this.cursor);
     }
 
     public offset(): number {
@@ -166,19 +165,20 @@ export class Writer {
             }
         }
         if (label.length > 0) {
-            labels.push(label);
+            labels.push(label.toLowerCase());
         }
-        this.writeStrings(labels, 0x3f);
+        this.writeStrings(labels, 63);
     }
 
-    public writeString(string: string = "") {
-        this.writeU8(string.length);
-        this.cursor += this.sink.write(string, this.cursor);
-    }
-
-    public writeStrings(strings: string[] = [], lengthMask = 0xff) {
+    public writeStrings(strings: string[] = [], lengthLimit = 255) {
+        if (lengthLimit > 255) {
+            throw new Error("Length limit too large: " + lengthLimit);
+        }
         for (let string of strings) {
-            const length = string.length & lengthMask;
+            const length = string.length;
+            if (length > lengthLimit) {
+                throw new Error("Too long (> " + lengthLimit + "): " + string);
+            }
             if (length > 0) {
                 this.writeU8(length);
                 this.cursor += this.sink.write(string, this.cursor, length);
@@ -187,19 +187,19 @@ export class Writer {
         this.writeU8(0);
     }
 
-    public writeU8(u8: number = 0) {
+    public writeU8(u8: number) {
         this.cursor = this.sink.writeUInt8(u8, this.cursor);
     }
 
-    public writeU16(u16: number = 0) {
+    public writeU16(u16: number) {
         this.cursor = this.sink.writeUInt16BE(u16, this.cursor);
     }
 
-    public writeU32(u32: number = 0) {
+    public writeU32(u32: number) {
         this.cursor = this.sink.writeUInt32BE(u32, this.cursor);
     }
 
-    public writeU48(u48: number = 0) {
+    public writeU48(u48: number) {
         this.cursor = this.sink.writeUInt16BE(u48 / 4294967296, this.cursor);
         this.cursor = this.sink.writeUInt32BE(u48 & 0xffffffff, this.cursor);
     }
