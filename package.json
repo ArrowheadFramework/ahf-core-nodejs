@@ -1,14 +1,14 @@
 {
-  "name": "ahf-core",
+  "name": "ahfc-client",
   "version": "0.2.2",
-  "description": "",
+  "description": "Client for interacting with the Arrowhead Framework mandatory core services. ",
   "engines": {
     "node": ">=6.11"
   },
   "main": "target/main/index.js",
   "types": "target/@types",
   "scripts": {
-    "prepublish": "npm run build",
+    "prepublishOnly": "npm run build",
     "build": "tsc",
     "pretest": "npm run build",
     "test": "node target/test/main.js"
@@ -21,6 +21,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ArrowheadFramework/ahf-core-nodejs.git"
+    "url": "https://github.com/ArrowheadFramework/ahfc-node-client.git"
   }
 }
