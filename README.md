@@ -44,8 +44,7 @@ to adhere to the below guidelines to be accepted.
   to get right, or (3) contains security-critical functionality.
 - Integration tests are not to be part of this repository.
 - The package is not to contain any implementations of cryptographic
-  primitives, such as secure hash functions or any other kind of encryption
-  functions.
+  primitives, such as secure hash functions, etc.
 
 ### Rationale
 
