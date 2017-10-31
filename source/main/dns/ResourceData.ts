@@ -340,6 +340,9 @@ export class TXT implements ResourceData {
      * @returns New TXT resource.
      */
     public static fromAttributes(attributes: { [key: string]: string }): TXT {
+        if (!attributes) {
+            attributes = {};
+        }
         const rdlength = Object.getOwnPropertyNames(attributes)
             .reduce((length, key) => {
                 const value = attributes[key];
