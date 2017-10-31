@@ -139,9 +139,8 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
                 const services = "_services._dns-sd._udp." + domain;
                 const type = record.serviceType + "." + domain;
                 const name = record.serviceName + "." + type;
-
                 const ttl = 60; // TODO: Configurable?
-                const builder = dns.Message.newUpdateBuilder()
+                return dns.Message.newUpdateBuilder()
                     .zone(domain)
                     .absent(name)
                     .update(new dns.ResourceRecord(
@@ -156,16 +155,11 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
                         name, dns.Type.SRV, dns.DClass.IN, ttl,
                         // TODO: Resolve endpoint automatically?
                         new dns.SRV(0, 0, record.port, record.endpoint || "?")
-                    ));
-
-                if (record.metadata) {
-                    builder.update(new dns.ResourceRecord(
+                    ))
+                    .update(new dns.ResourceRecord(
                         name, dns.Type.TXT, dns.DClass.IN, ttl,
-                        dns.TXT.fromAttributes(record.metadata)
-                    ));
-                }
-
-                return builder
+                        dns.TXT.fromAttributes(record.metadata || {})
+                    ))
                     .sign(this.transactionSigner)
                     .build();
             }))
@@ -178,17 +172,16 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
             .then(domains => domains.map(domain => {
                 const type = identifier.serviceType + "." + domain;
                 const name = identifier.serviceName + "." + type;
-
-                const updates = [
-                    new dns.ResourceRecord(type, dns.Type.PTR, dns.DClass.IN,
-                        0, new dns.PTR(name)),
-                    new dns.ResourceRecord(name, dns.Type.ANY, dns.DClass.ANY),
-                ];
-
                 return dns.Message.newUpdateBuilder()
                     .zone(domain)
                     .present(name)
-                    .update(...updates)
+                    .update(new dns.ResourceRecord(
+                        type, dns.Type.PTR, dns.DClass.IN, 0,
+                        new dns.PTR(name)
+                    ))
+                    .update(new dns.ResourceRecord(
+                        name, dns.Type.ANY, dns.DClass.ANY
+                    ))
                     .sign(this.transactionSigner)
                     .build();
             }))
