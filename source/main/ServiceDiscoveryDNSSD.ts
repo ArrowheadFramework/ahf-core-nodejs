@@ -141,21 +141,31 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
                 const name = record.serviceName + "." + type;
 
                 const ttl = 60; // TODO: Configurable?
-                const updates = [
-                    new dns.ResourceRecord(services, dns.Type.PTR,
-                        dns.DClass.IN, ttl, new dns.PTR(type)),
-                    new dns.ResourceRecord(type, dns.Type.PTR,
-                        dns.DClass.IN, ttl, new dns.PTR(name)),
-                    new dns.ResourceRecord(name, dns.Type.SRV, dns.DClass.IN,
-                        ttl, new dns.SRV(0, 0, record.port, record.endpoint)),
-                    new dns.ResourceRecord(name, dns.Type.TXT, dns.DClass.IN,
-                        ttl, dns.TXT.fromAttributes(record.metadata))
-                ];
-
-                return dns.Message.newUpdateBuilder()
+                const builder = dns.Message.newUpdateBuilder()
                     .zone(domain)
                     .absent(name)
-                    .update(...updates)
+                    .update(new dns.ResourceRecord(
+                        services, dns.Type.PTR, dns.DClass.IN, ttl,
+                        new dns.PTR(type)
+                    ))
+                    .update(new dns.ResourceRecord(
+                        type, dns.Type.PTR, dns.DClass.IN, ttl,
+                        new dns.PTR(name)
+                    ))
+                    .update(new dns.ResourceRecord(
+                        name, dns.Type.SRV, dns.DClass.IN, ttl,
+                        // TODO: Resolve endpoint automatically?
+                        new dns.SRV(0, 0, record.port, record.endpoint || "?")
+                    ));
+
+                if (record.metadata) {
+                    builder.update(new dns.ResourceRecord(
+                        name, dns.Type.TXT, dns.DClass.IN, ttl,
+                        dns.TXT.fromAttributes(record.metadata)
+                    ));
+                }
+
+                return builder
                     .sign(this.transactionSigner)
                     .build();
             }))
