@@ -1,6 +1,6 @@
 {
   "name": "ahfc-client",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Client for interacting with the Arrowhead Framework mandatory core services. ",
   "engines": {
     "node": ">=6.11"
