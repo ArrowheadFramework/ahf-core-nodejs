@@ -23,23 +23,14 @@ export interface Suite {
 export type Test = () => PromiseLike<void> | void;
 
 /**
- * The results of running a set of test suites.
- */
-export interface Report {
-    /// The number of failed tests.
-    failed: number,
-
-    /// The number of passed tests.
-    passed: number,
-}
-
-/**
- * Runs given unit test suites and reports on any results.
+ * Runs given unit test suites, reports on any results and exists.
  *
  * @param suites Unit test suites to execute.
  */
-export async function runSuites(...suites: Suite[]): Promise<Report> {
-    let report: Report = {failed: 0, passed: 0};
+export async function runSuitesAndExit(...suites: Suite[]) {
+    let failed = 0;
+    let passed = 0;
+
     for (let suite of suites) {
         console.log("> " + suite.name);
 
@@ -56,11 +47,11 @@ export async function runSuites(...suites: Suite[]): Promise<Report> {
                     continue;
                 }
                 await value();
-                report.passed += 1;
+                passed += 1;
                 console.log("  - PASS " + key);
             }
             catch (error) {
-                report.failed += 1;
+                failed += 1;
                 console.log("  - FAIL " + key +
                     (error.message ? (": " + error.message) : "")
                 );
@@ -69,8 +60,9 @@ export async function runSuites(...suites: Suite[]): Promise<Report> {
         console.log();
     }
     console.log("< Test Results");
-    console.log("  - Failed tests:  " + report.failed);
-    console.log("  - Passed tests:  " + report.passed);
+    console.log("  - Failed tests:  " + failed);
+    console.log("  - Passed tests:  " + passed);
     console.log();
-    return report;
+
+    process.exit(failed === 0 ? 0 : 1)
 }
