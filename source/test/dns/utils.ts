@@ -1,6 +1,12 @@
 import * as assert from "assert";
 import * as io from "../../main/dns/io";
 
+export type Read = (reader: io.Reader) => any;
+
+export interface Writable {
+    write(writer: io.Writer);
+}
+
 const _buffer = Buffer.alloc(65535);
 
 export function readAndCompare(buffer: Buffer, read: Read, expected: any) {
@@ -9,11 +15,7 @@ export function readAndCompare(buffer: Buffer, read: Read, expected: any) {
     assert.deepStrictEqual(actual, expected);
 }
 
-export function readWriteAndCompare(
-    buffer: Buffer,
-    read: Read,
-    writable: Writable
-) {
+export function readWriteAndCompare(buffer: Buffer, read: Read, writable: Writable) {
     readAndCompare(buffer, read, writable);
     writeAndCompare(writable, buffer);
 }
@@ -27,10 +29,4 @@ export function writeAndCompare(writable: Writable, buffer: Buffer) {
             buffer.toString("hex")
         );
     }
-};
-
-export type Read = (reader: io.Reader) => any;
-
-export interface Writable {
-    write(writer: io.Writer);
 }

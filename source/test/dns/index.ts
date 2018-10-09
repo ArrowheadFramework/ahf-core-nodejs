@@ -1,3 +1,3 @@
-export * from "./TestMessage";
-export * from "./TestResourceData";
-export * from "./TestResourceRecord";
+export * from "./suiteMessage";
+export * from "./suiteResourceData";
+export * from "./suiteResourceRecord";

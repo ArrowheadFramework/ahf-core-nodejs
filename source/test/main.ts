@@ -1,9 +1,8 @@
 import * as dns from "./dns";
 import * as unit from "./unit";
 
-new unit.ConsoleTester({ verbose: false })
-    .register(dns.TestMessage)
-    .register(dns.TestResourceData)
-    .register(dns.TestResourceRecord)
-    .run()
-    .then(status => process.exit(status));
+unit.runSuites(
+    dns.suiteMessage,
+    dns.suiteResourceData,
+    dns.suiteResourceRecord,
+).then(report => process.exit(report.failed === 0 ? 0 : 1));
