@@ -1,8 +1,8 @@
-import { DClass, Type } from "./constants";
+import {DClass, Type} from "./constants";
 import * as crypto from "crypto";
-import { Writer } from "./io";
-import { TSIG } from "./ResourceData";
-import { ResourceRecord } from "./ResourceRecord";
+import {Writer} from "./io";
+import {TSIG} from "./ResourceData";
+import {ResourceRecord} from "./ResourceRecord";
 
 /**
  * An object used to create RFC 2845 Transaction SIGnatures (TSIGs).
@@ -56,7 +56,7 @@ export class TransactionSigner {
 
     /**
      * Creates transaction signature record.
-     * 
+     *
      * The created record must be added at the end of the ADDITIONALS section of
      * the signed message before transmission, wich may not include any further
      * changes. Also, the ARCOUNT of the message header must be incremented

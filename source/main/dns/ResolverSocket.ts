@@ -1,10 +1,9 @@
-import { OpCode, RCode } from "./constants";
 import * as dgram from "dgram";
 import * as events from "events";
-import { Reader, Writer } from "./io";
-import { Message } from "./Message";
+import {Writer} from "./io";
+import {Message} from "./Message";
 import * as net from "net";
-import { ResolverError, ResolverErrorKind } from "./Resolver";
+import {ResolverError, ResolverErrorKind} from "./Resolver";
 
 const BYTE_LENGTH_MAX_UDP = 512;
 const BYTE_LENGTH_MAX_TCP = 65535;
@@ -31,7 +30,7 @@ export class ResolverSocket {
      */
     public constructor(options: string | ResolverSocketOptions) {
         if (typeof options === "string") {
-            options = { address: options };
+            options = {address: options};
         }
         if (net.isIP(options.address) === 0) {
             throw new Error("Not an IP address: " + options.address);
@@ -141,7 +140,7 @@ export interface ResolverSocketOptions {
      * exceeds the given timeout, any outstanding messages are rejected with
      * a timeout error.
      *
-     * Defaults to 10000 (10 seconds). 
+     * Defaults to 10000 (10 seconds).
      */
     readonly timeoutInMs?: number;
 }
@@ -152,7 +151,8 @@ class Task {
         public readonly resolve: (response: Message) => void,
         public readonly reject: (error: ResolverError) => void,
         public retriesLeft: number = 0,
-    ) { }
+    ) {
+    }
 
     public timeSentUnixMs?: number;
 }
@@ -307,9 +307,7 @@ interface Transport extends events.EventEmitter {
     close();
     open();
     opened(): boolean;
-
     send(request: Message);
-
     on(event: "close", r: () => void): this;
     on(event: "error", r: (error: any) => void): this;
     on(event: "response", r: (response: Message) => void): this;
@@ -322,9 +320,7 @@ class TransportTCP extends events.EventEmitter implements Transport {
     private isTimedOut: boolean;
     private socket: net.Socket;
 
-    public constructor(
-        private readonly options: ResolverSocketOptions,
-    ) {
+    public constructor(private readonly options: ResolverSocketOptions) {
         super();
         this.isOpen = false;
         this.isTimedOut = false;
@@ -344,7 +340,7 @@ class TransportTCP extends events.EventEmitter implements Transport {
         this.socket = new net.Socket();
         this.socket.setTimeout(this.options.timeoutInMs);
 
-        this.socket.on("close", hadError => {
+        this.socket.on("close", () => {
             this.isOpen = false;
             if (this.isTimedOut) {
                 this.isTimedOut = false;
@@ -421,7 +417,6 @@ class TransportTCP extends events.EventEmitter implements Transport {
             }
         };
         this.socket.addListener("data", onLengthData);
-
         this.socket.connect(this.options.port, this.options.address);
     }
 

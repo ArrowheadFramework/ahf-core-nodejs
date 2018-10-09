@@ -1,5 +1,5 @@
-import { Type } from "./constants";
-import { Reader, Writer } from "./io";
+import {Type} from "./constants";
+import {Reader, Writer} from "./io";
 
 /**
  * A DNS resource data object, as described by RFC 1035.
@@ -91,8 +91,7 @@ export class AAAA implements ResourceData {
     public write(writer: Writer) {
         let sections = this.address.split(":").slice(0, 8);
         let missing = (8 - sections.length);
-        let indexOffset = 0;
-        return sections.forEach((section, index) => {
+        return sections.forEach((section) => {
             if (section.length === 0) {
                 do {
                     writer.writeU16(0);
@@ -354,8 +353,7 @@ export class TXT implements ResourceData {
         let strings = new Array<string>(keys.length);
         keys.forEach((key, index) => {
             const value = attributes[key];
-            const string = format(key) + "=" + (value || "");
-            strings[index] = string;
+            strings[index] = format(key) + "=" + (value || "");
         });
         writer.writeStrings(strings);
 

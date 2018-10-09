@@ -8,8 +8,7 @@
         "sourceMap": true,
         "target": "es6",
         "typeRoots": [
-            "npm_modules/@types",
-            "source/@types"
+            "node_modules/@types"
         ]
     },
     "exclude": [

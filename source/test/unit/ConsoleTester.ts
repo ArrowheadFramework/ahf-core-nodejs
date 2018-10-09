@@ -1,4 +1,4 @@
-import { Recorder, Suite, Tester, Unit } from "./index";
+import {Suite, Tester, Unit} from "./index";
 
 /**
  * Unit tester that writes test results to console.
@@ -9,7 +9,7 @@ export class ConsoleTester implements Tester {
 
     /**
      * Creates new console tester.
-     * 
+     *
      * @param options Instance options.
      */
     public constructor(options: ConsoleTesterOptions = {}) {
@@ -45,7 +45,7 @@ export class ConsoleTester implements Tester {
                     return true;
                 }
                 return false;
-            }
+            };
 
             const logPrefix = this.verbose ? "  - " : "";
             const logSuite = this.verbose
@@ -81,13 +81,13 @@ export class ConsoleTester implements Tester {
 
             if (unit.timeoutInMs) {
                 timeout = setTimeout(() =>
-                    fail("Timed out after " +
-                        unit.timeoutInMs + " ms."),
+                        fail("Timed out after " +
+                            unit.timeoutInMs + " ms."),
                     unit.timeoutInMs
                 );
             }
             try {
-                unit.test({ fail, pass, skip }, ...extras);
+                unit.test({fail, pass, skip}, ...extras);
                 if (!unit.timeoutInMs) {
                     pass();
                 }

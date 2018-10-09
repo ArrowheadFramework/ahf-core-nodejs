@@ -1,10 +1,9 @@
-import { DClass, OpCode, RCode, Type } from "./constants";
+import {RCode, Type} from "./constants";
 import * as dns from "dns";
-import { Errors } from "../error";
-import { Message } from "./Message";
+import {Errors} from "../error";
+import {Message} from "./Message";
 import * as net from "net";
-import { ResolverSocket, ResolverSocketOptions } from "./ResolverSocket";
-import { ResourceRecord } from "./ResourceRecord";
+import {ResolverSocket, ResolverSocketOptions} from "./ResolverSocket";
 import * as rdata from "./ResourceData";
 
 /**
@@ -20,11 +19,11 @@ export class Resolver {
      */
     public constructor(options: ResolverOptions = {}) {
         if (!options.sockets) {
-            options = { sockets: [] };
+            options = {sockets: []};
         }
         if (options.sockets.length === 0) {
             options = {
-                sockets: dns.getServers().map(address => ({ address })),
+                sockets: dns.getServers().map(address => ({address})),
                 onErrorIgnored: options.onErrorIgnored,
             };
         }
@@ -73,7 +72,7 @@ export class Resolver {
                         targets[index] = (answer.rdata as rdata.PTR).ptrdname;
                         return targets;
                     }, new Array(response.answers.length)));
-            }, new Array<string | Error>()));
+            }, []));
     }
 
     public resolveSRV(hostname: string): Promise<rdata.SRV[]> {
@@ -139,7 +138,7 @@ export class Resolver {
                     }
                     return sections;
                 }, new Array<string>(8))
-                .reduceRight((result, section) => result +=
+                .reduceRight((result, section) => result +
                     section.charAt(3) + "." +
                     section.charAt(2) + "." +
                     section.charAt(1) + "." +
@@ -249,7 +248,7 @@ export class ResolverError extends Error {
  */
 export enum ResolverErrorKind {
     /**
-     * There is no domain name server to send requests to. 
+     * There is no domain name server to send requests to.
      */
     NoKnownNameServers,
 

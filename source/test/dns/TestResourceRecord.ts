@@ -1,6 +1,4 @@
-import { DClass, Type } from "../../main/dns/constants";
-import * as rd from "../../main/dns/ResourceData";
-import { ResourceRecord } from "../../main/dns/ResourceRecord";
+import {DClass, PTR, ResourceRecord, TSIG, Type} from "../../main/dns/";
 import * as unit from "../unit";
 import * as utils from "./utils";
 
@@ -9,7 +7,7 @@ export const TestResourceRecord: unit.Suite = {
     units: [
         {
             name: "Decode and encode PTR record",
-            test: recorder => utils.readWriteAndCompare(
+            test: () => utils.readWriteAndCompare(
                 Buffer.from([
                     // 5 alpha
                     0x05, 0x61, 0x6c, 0x70, 0x68, 0x61,
@@ -40,13 +38,13 @@ export const TestResourceRecord: unit.Suite = {
                 new ResourceRecord(
                     "alpha.arrowhead.org.",
                     Type.PTR, DClass.IN, 30,
-                    new rd.PTR("beta.arrowhead.org.")
+                    new PTR("beta.arrowhead.org.")
                 )
             )
         },
         {
             name: "Decode and encode TSIG record",
-            test: recorder => utils.readWriteAndCompare(
+            test: () => utils.readWriteAndCompare(
                 Buffer.from([
                     // 5 alpha
                     0x05, 0x61, 0x6c, 0x70, 0x68, 0x61,
@@ -85,7 +83,7 @@ export const TestResourceRecord: unit.Suite = {
                 new ResourceRecord(
                     "alpha.arrowhead.org.",
                     Type.TSIG, DClass.IN, 30,
-                    new rd.TSIG(
+                    new TSIG(
                         "hmac-sha1.",
                         100, 300,
                         Buffer.from([0xfe, 0x1c]),

@@ -3,7 +3,7 @@
   "version": "0.2.5",
   "description": "Client for interacting with the Arrowhead Framework mandatory core services. ",
   "engines": {
-    "node": ">=6.11"
+    "node": "8.*"
   },
   "main": "target/main/index.js",
   "types": "target/@types",
@@ -16,8 +16,8 @@
   "author": "Emanuel Palm <emanuel.palm@ltu.se>",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "6.*",
-    "typescript": "^2.5.3"
+    "@types/node": "8.*",
+    "typescript": "^3.1.1"
   },
   "repository": {
     "type": "git",

@@ -1,7 +1,7 @@
-import { DClass, OpCode, RCode, Type } from "./constants";
-import { Reader, Writer } from "./io";
-import { ResourceRecord } from "./ResourceRecord";
-import { TransactionSigner } from "./TransactionSigner";
+import {DClass, OpCode, RCode, Type} from "./constants";
+import {Reader, Writer} from "./io";
+import {ResourceRecord} from "./ResourceRecord";
+import {TransactionSigner} from "./TransactionSigner";
 
 /**
  * An RFC 1035 message.
@@ -63,7 +63,7 @@ export class Message {
     ): Message {
         return new Message(
             Message.newID(),
-            { opcode: OpCode.QUERY, rd },
+            {opcode: OpCode.QUERY, rd},
             [new ResourceRecord(hostname, type, dclass)]
         );
     }
@@ -76,7 +76,7 @@ export class Message {
     }
 
     /**
-     * Reads message from source. 
+     * Reads message from source.
      *
      * @param source Source of message.
      * @returns Read message.
@@ -217,7 +217,8 @@ export class UpdateBuilder {
         private readonly _authorities?: ResourceRecord[],
         private readonly _additionals?: ResourceRecord[],
         private readonly _transactionSigner?: TransactionSigner,
-    ) { }
+    ) {
+    }
 
     /**
      * @return New empty builder.
@@ -326,7 +327,7 @@ export class UpdateBuilder {
     public build(): Message {
         return new Message(
             this._id || Message.newID(),
-            { qr: (this._flags || {}).qr === true, opcode: OpCode.UPDATE },
+            {qr: (this._flags || {}).qr === true, opcode: OpCode.UPDATE},
             this._questions, this._answers, this._authorities,
             this._additionals, this._transactionSigner);
     }

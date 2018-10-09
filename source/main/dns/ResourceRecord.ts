@@ -1,6 +1,5 @@
-import { Type } from "./constants";
-import { Reader, Writer } from "./io";
-import { read as readResourceData, ResourceData } from "./ResourceData";
+import {Reader, Writer} from "./io";
+import {read as readResourceData, ResourceData} from "./ResourceData";
 
 /**
  * A DNS resource record, as described by RFC 1035.

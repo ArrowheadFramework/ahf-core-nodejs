@@ -1,8 +1,11 @@
-import { DClass, OpCode, Type } from "../../main/dns/constants";
-import { Message } from "../../main/dns/Message";
-import * as rd from "../../main/dns/ResourceData";
-import { ResourceRecord } from "../../main/dns/ResourceRecord";
-import { TransactionSigner } from "../../main/dns/TransactionSigner";
+import {
+    DClass,
+    OpCode,
+    Type,
+    Message,
+    ResourceRecord,
+    TransactionSigner
+} from "../../main/dns";
 import * as unit from "../unit";
 import * as utils from "./utils";
 
@@ -11,7 +14,7 @@ export const TestMessage: unit.Suite = {
     units: [
         {
             name: "Decode and encode PTR query",
-            test: recorder => utils.readWriteAndCompare(
+            test: () => utils.readWriteAndCompare(
                 Buffer.from([
                     // 12345 (ID)
                     0x30, 0x39,
@@ -63,7 +66,7 @@ export const TestMessage: unit.Suite = {
         },
         {
             name: "Encode TSIG update",
-            test: recorder => utils.writeAndCompare(
+            test: () => utils.writeAndCompare(
                 new Message(
                     37352,
                     {

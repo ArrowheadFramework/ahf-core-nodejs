@@ -5,7 +5,7 @@ export class Reader {
     private readonly source: Buffer;
 
     private cursor: number;
-    private end: number;
+    private readonly end: number;
 
     /**
      * Creates new DNS reader.
@@ -72,7 +72,7 @@ export class Reader {
             name += this.read(length)
                 .toString()
                 .replace(".", "\\.") + ".";
-        };
+        }
         return name;
     }
 
@@ -80,7 +80,7 @@ export class Reader {
      * @return A series of read DNS character strings.
      */
     public readStrings(): string[] {
-        const strings = new Array();
+        const strings = [];
         let length;
         do {
             length = this.readU8();
@@ -133,7 +133,7 @@ export class Reader {
 export class Writer {
     private readonly sink: Buffer;
 
-    private begin: number;
+    private readonly begin: number;
     private cursor: number;
     private end: number;
 

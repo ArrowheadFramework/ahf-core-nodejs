@@ -90,14 +90,14 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
             const nifGroups = os.networkInterfaces();
             return Object.getOwnPropertyNames(nifGroups)
                 .map(nifGroupName => nifGroups[nifGroupName])
-                .reduce((addresses, nifGroup) => {
+                .reduce((addresses: string[], nifGroup) => {
                     nifGroup.forEach(nif => {
                         if (!nif.internal) {
                             addresses.push(nif.address);
                         }
                     });
                     return addresses;
-                }, new Array<string>());
+                }, []);
         }
     }
 
@@ -164,7 +164,7 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
                     .build();
             }))
             .then(updates => this.resolver.sendAll(updates))
-            .then(respones => undefined);
+            .then(() => undefined);
     }
 
     public unpublish(identifier: ServiceIdentifier): Promise<void> {
@@ -186,7 +186,7 @@ export class ServiceDiscoveryDNSSD implements ServiceDiscovery {
                     .build();
             }))
             .then(updates => this.resolver.sendAll(updates))
-            .then(respones => undefined);
+            .then(() => undefined);
     }
 }
 
