@@ -1,58 +1,36 @@
-import * as http from "http";
-import * as https from "https";
-import {
-    ServiceDiscovery,
-    ServiceQuery,
-    ServiceQueryResults,
-    ServiceRecord
-} from "./ServiceDiscovery";
+import {ServiceDiscovery} from ".";
+import {ServiceQueryForm, ServiceQueryResult, ServiceRegistryEntry} from "../data";
+import * as http from "./http";
 
 /**
  * A `ServiceDiscovery` client using HTTP or HTTPS for sending and receiving
  * messages.
  */
 export class ServiceDiscoveryHTTP implements ServiceDiscovery {
-    private readonly agent: http.Agent | https.Agent;
+    private readonly client: http.Client;
+    private readonly service: ServiceRegistryEntry;
 
     /**
-     * Creates new HTTP(S) service discovery service client from given record.
+     * Creates new HTTP(S) service discovery service client.
      *
-     * @param record Description of service to connect to.
+     * @param serviceDiscoveryEntry Description of service to connect to.
      */
-    public constructor(record: ServiceRecord) {
-        if (record.service.name != "ServiceDiscovery") {
-            throw new Error("Unsupported service kind: "
-                + record.service.name);
-        }
-        if (!record.service.encodings.has("json")) {
-            throw new Error("No compatible service encoding in: {"
-                + record.service.encodings + "}");
-        }
-        switch (record.service.protocol) {
-            case "http":
-                this.agent = new http.Agent();
-                break;
-
-            case "https":
-                this.agent = new https.Agent();
-                break;
-
-            default:
-                throw new Error("Unsupported service protocol: "
-                    + record.service.protocol);
-        }
+    public constructor(serviceDiscoveryEntry: ServiceRegistryEntry) {
+        this.client = http.Client.create();
+        this.service = serviceDiscoveryEntry; // TODO: Get URL schema, domain, etc.
     }
 
-    public async query(query?: ServiceQuery): Promise<ServiceQueryResults> {
-        return undefined;
+    async query(query: ServiceQueryForm): Promise<ServiceQueryResult> {
+        throw new Error("Not implemented");
     }
 
-    public async register(record: ServiceRecord): Promise<void> {
-        return undefined;
+    async register(entry: ServiceRegistryEntry): Promise<void> {
+        throw new Error("Not implemented");
     }
 
-    public async unregister(record: ServiceRecord): Promise<void> {
-        return undefined;
+    async unregister(entry: ServiceRegistryEntry): Promise<void> {
+        throw new Error("Not implemented");
     }
+
 
 }
